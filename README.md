@@ -7,6 +7,15 @@ The goal is to create a fast and accurate general segmentation model for edge de
 
 This codebase adapts the code in the EdgeSAM repo.
 
+## Pretrained Models
+We train against 5% of SA-1B and provide distillation checkpoints below:
+
+STEP 1: [PyTorch](https://drive.google.com/file/d/14zMPCbdInahfwNS8rHIMdpY2m7szVwaw/view?usp=drive_link) 
+
+STEP 2: [PyTorch](https://drive.google.com/file/d/1lsd2TsfYMgBN3NJGxGVs-HEu2DANaJQz/view?usp=drive_link) 
+
+STEP 3: [PyTorch](https://drive.google.com/file/d/1YFBE939hOeraelSXm4lEYzoOLR-WQRtS/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/12jHKCPMymUqdQvh8BbSEcPcC3hYgxGS3/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1SSovZSC95RcboqI7HQtmwXTFG3i_L4RV/view?usp=drive_link)
+
 ## Reproducibility
 We provide the full script in `scripts/download_data_and_run_distillation.sh`
 
@@ -84,15 +93,6 @@ masks, scores, logits = predictor.predict(
 
 # mask shape (1, 4, H, W)
 ```
-
-## Pretrained Models
-We train against 5% of SA-1B and provide distillation checkpoints below:
-
-STEP 1: [PyTorch](https://drive.google.com/file/d/14zMPCbdInahfwNS8rHIMdpY2m7szVwaw/view?usp=drive_link) 
-
-STEP 2: [PyTorch](https://drive.google.com/file/d/1lsd2TsfYMgBN3NJGxGVs-HEu2DANaJQz/view?usp=drive_link) 
-
-STEP 3: [PyTorch](https://drive.google.com/file/d/1YFBE939hOeraelSXm4lEYzoOLR-WQRtS/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/12jHKCPMymUqdQvh8BbSEcPcC3hYgxGS3/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1SSovZSC95RcboqI7HQtmwXTFG3i_L4RV/view?usp=drive_link)
 
 ## Conversion to TensorRT
 ```
