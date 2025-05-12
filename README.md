@@ -3,7 +3,9 @@ Say no to layernorms - combines [EdgeSAM](https://github.com/chongzhou96/EdgeSAM
 
 LayerNormalization presents a problem when quantizing due to its sensitivity to numerical accuracy. We replace layernorms in the image encoder and mask decoder with dynamic tanh (DyT) layers. This requires retraining via knowledge distillation of the image encoder (based on RepViT) and the mask decoder - here we present a 3 step distillation curriculum.
 
-The goal is to create a fast and accurate general segmentation model for edge devices leveraging to knowledge of SAM. We encourage contributions to this effort. 
+The goal is to create a fast and accurate general segmentation model for edge devices leveraging to knowledge of SAM. We encourage contributions to this effort.
+
+This codebase adapts the code in the EdgeSAM repo.
 
 ## Reproducibility
 We provide the full script in `scripts/download_data_and_run_distillation.sh`
