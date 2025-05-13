@@ -56,33 +56,33 @@ if args.enable_onnx:
     predictor = SamPredictorONNX(args.encoder_onnx_path, args.decoder_onnx_path)
 else:
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    sam = sam_model_registry["edge_sam"](checkpoint=args.checkpoint, upsample_mode="bicubic")
+    sam = sam_model_registry["edge_sam_dyt"](checkpoint=args.checkpoint, upsample_mode="bicubic")
     sam = sam.to(device=device)
     sam.eval()
     predictor = SamPredictor(sam)
 
 
 examples = [
-    ["web_demo/assets/1.jpeg"],
-    ["web_demo/assets/2.jpeg"],
-    ["web_demo/assets/3.jpeg"],
-    ["web_demo/assets/4.jpeg"],
-    ["web_demo/assets/5.jpeg"],
-    ["web_demo/assets/6.jpeg"],
-    ["web_demo/assets/7.jpeg"],
-    ["web_demo/assets/8.jpeg"],
-    ["web_demo/assets/9.jpeg"],
-    ["web_demo/assets/10.jpeg"],
-    ["web_demo/assets/11.jpeg"],
-    ["web_demo/assets/12.jpeg"],
-    ["web_demo/assets/13.jpeg"],
-    ["web_demo/assets/14.jpeg"],
-    ["web_demo/assets/15.jpeg"],
-    ["web_demo/assets/16.jpeg"]
+    ["assets/1.jpeg"],
+    ["assets/2.jpeg"],
+    ["assets/3.jpeg"],
+    ["assets/4.jpeg"],
+    ["assets/5.jpeg"],
+    ["assets/6.jpeg"],
+    ["assets/7.jpeg"],
+    ["assets/8.jpeg"],
+    ["assets/9.jpeg"],
+    ["assets/10.jpeg"],
+    ["assets/11.jpeg"],
+    ["assets/12.jpeg"],
+    ["assets/13.jpeg"],
+    ["assets/14.jpeg"],
+    ["assets/15.jpeg"],
+    ["assets/16.jpeg"]
 ]
 
 # Description
-title = "<center><strong><font size='8'>EdgeSAM<font></strong> <a href='https://github.com/chongzhou96/EdgeSAM'><font size='6'>[GitHub]</font></a> </center>"
+title = "<center><strong><font size='8'>EdgeSAM-DyT<font></strong> <a href='https://github.com/Krasner/edgesam-dyt'><font size='6'>[GitHub]</font></a> </center>"
 
 description_p = """ # Instructions for point mode
 
