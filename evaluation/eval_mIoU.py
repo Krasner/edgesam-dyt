@@ -215,7 +215,9 @@ def main(args):
         use_rpn=use_rpn, out_indices=(2, 3, 4, 5))
 
     with open(args.checkpoint, "rb") as f:
-        state_dict = torch.load(f)
+        state_dict = torch.load(f, weights_only=False)
+    if 'model' in state_dict:
+        state_dict = state_dict['model']
     print(sam.load_state_dict(state_dict, strict=False))
 
     sam.to(device=args.device)
