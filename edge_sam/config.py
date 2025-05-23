@@ -63,6 +63,8 @@ _C.MODEL.PRETRAINED = ''
 _C.MODEL.RESUME = ''
 # Number of classes, overwritten in data preparation
 _C.MODEL.NUM_CLASSES = 1000
+# Enable HQ token for mask decoder
+_C.MODEL.MASK_HQ = False
 
 # DISTILL
 _C.DISTILL = CN()

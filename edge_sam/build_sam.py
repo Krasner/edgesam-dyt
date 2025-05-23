@@ -9,8 +9,18 @@ import torch
 from functools import partial
 
 import edge_sam.modeling as modeling
-from edge_sam.modeling import (ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer, RepViT,
-                               SamBatch, PromptEncoderBatch, MaskDecoderBatch)
+from edge_sam.modeling import (
+    ImageEncoderViT, 
+    MaskDecoder, 
+    PromptEncoder, 
+    Sam, 
+    TwoWayTransformer, 
+    RepViT,
+    SamBatch, 
+    PromptEncoderBatch, 
+    MaskDecoderBatch,
+    MaskDecoderHQ,
+)
 from edge_sam.config import _C, _update_config_from_file
 from yacs.config import CfgNode as CN
 
@@ -77,6 +87,20 @@ def build_edge_sam_dyt(checkpoint=None, upsample_mode="bicubic"):
     )
     return _build_sam(image_encoder, checkpoint, dyt=True, gelu_approx='tanh')
 
+def build_edge_sam_dyt_hq(checkpoint=None, upsample_mode="bicubic"):
+    image_encoder = RepViT(
+        arch="m1",
+        img_size=image_size,
+        upsample_mode=upsample_mode,
+        fuse=True,
+        dyt=True,
+        gelu_approx='tanh',
+        return_low_feats=True,
+        feature_names = ['stem','stage0','stage1']
+    )
+    return _build_sam(image_encoder, checkpoint, dyt=True, gelu_approx='tanh', enable_hq=True)
+
+
 def build_edge_sam_dyt_frozen_mask(checkpoint=None, upsample_mode="bicubic"):
     image_encoder = RepViT(
         arch="m1",
@@ -95,6 +119,7 @@ sam_model_registry = {
     "vit_b": build_sam_vit_b,
     "edge_sam": build_edge_sam,
     "edge_sam_dyt": build_edge_sam_dyt,
+    "edge_sam_dyt_hq": build_edge_sam_dyt_hq,
     "edge_sam_dyt_frozen_mask": build_edge_sam_dyt_frozen_mask,
 }
 build_sam = build_edge_sam
@@ -123,10 +148,15 @@ def _build_sam_encoder(
     return image_encoder
 
 
-def _build_sam(image_encoder, checkpoint, enable_batch=False, enable_distill=False, lora=False, rpn_head=None, dyt=False, gelu_approx='none'):
+def _build_sam(image_encoder, checkpoint, enable_batch=False, enable_distill=False, lora=False, rpn_head=None, dyt=False, gelu_approx='none', enable_hq=False):
     sam_model = SamBatch if enable_batch else Sam
     prompt_encoder = PromptEncoderBatch if enable_batch else PromptEncoder
-    mask_decoder = MaskDecoderBatch if enable_batch else MaskDecoder
+    if enable_hq:
+        mask_decoder = MaskDecoderHQ
+    elif enable_batch:
+        mask_decoder = MaskDecoderBatch
+    else:
+        mask_decoder = MaskDecoder
 
     sam_args = dict(
         image_encoder=image_encoder,
@@ -196,9 +226,11 @@ def build_sam_from_config(
     if not use_original_mask_decoder:
         dyt = config.DISTILL.MASK_DYT
         gelu_approx = config.DISTILL.GELU_APPROX
+        enable_hq = config.MODEL.MASK_HQ
     else:
         dyt = False
         gelu_approx = 'none'
+        enable_hq = False
 
     if model_type in ['vit_h', 'vit_l', 'vit_b']:
         return sam_model_registry[model_type](
@@ -210,10 +242,13 @@ def build_sam_from_config(
         )
 
     kwargs['upsample_mode'] = config.DISTILL.UPSAMPLE_MODE
+    if config.MODEL.MASK_HQ:
+        kwargs['return_low_feats'] = True
+
     image_encoder = getattr(modeling, model_type)(fuse=fuse, **kwargs)
 
     if encoder_only:
         return image_encoder
 
-    sam = _build_sam(image_encoder, checkpoint, enable_batch, enable_distill, lora, rpn_head, dyt, gelu_approx)
+    sam = _build_sam(image_encoder, checkpoint, enable_batch, enable_distill, lora, rpn_head, dyt, gelu_approx, enable_hq)
     return sam

@@ -7,7 +7,7 @@
 from .sam import Sam
 from .sam_batch import SamBatch, PromptEncoderBatch, MaskDecoderBatch
 from .image_encoder import ImageEncoderViT
-from .mask_decoder import MaskDecoder
+from .mask_decoder import MaskDecoder, MaskDecoderHQ
 from .prompt_encoder import PromptEncoder
 from .transformer import TwoWayTransformer
 from .rep_vit import *

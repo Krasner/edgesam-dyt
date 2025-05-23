@@ -1,0 +1,34 @@
+MODEL:
+  TYPE: rep_vit_m1_dyt
+  # PRETRAINED: output/rep_vit_m1_dyt_fuse_sa_distill/default/ckpt_epoch_19.pth
+  PRETRAINED: output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth
+  MASK_HQ: True
+
+TRAIN:
+  EPOCHS: 24
+  BASE_LR: 1e-3
+  MIN_LR: 1e-4
+  WARMUP_LR: 1e-4
+  WARMUP_EPOCHS: 1
+  WEIGHT_DECAY: 0.05
+  CLIP_GRAD: 0.01
+  EVAL_BN_WHEN_TRAINING: True
+
+DATA:
+  IMG_SIZE: 1024
+  MEAN_AND_STD_TYPE: default
+  NUM_WORKERS: 4
+  BATCH_SIZE: 4
+
+DISTILL:
+  ENCODER_ONLY: False
+  EMBED_DIM: 256
+  NO_RAND: True
+  FUSE: True
+  FREEZE_IMAGE_ENCODER: True
+  FREEZE_PROMPT_ENCODER: True
+  FREEZE_MASK_DECODER: True
+  GELU_APPROX: tanh
+  MASK_DYT: True
+
+AMP_ENABLE: True

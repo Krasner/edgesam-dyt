@@ -125,7 +125,7 @@ def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger)
     return max_accuracy
 
 
-def load_pretrained(config, model, logger):
+def load_pretrained(config, model, logger, stage="image_encoder"):
     logger.info(
         f"==============> Loading weight {config.MODEL.PRETRAINED} for fine-tuning......")
     try:
@@ -160,10 +160,10 @@ def load_pretrained(config, model, logger):
         
         new_state_dict = model.state_dict()
         for key, val in state_dict.items():
-            if key.startswith("image_encoder."):
-                _key = key.replace("image_encoder.","")
+            if key.startswith(f"{stage}."):
+                _key = key.replace(f"{stage}.","")
                 new_state_dict[_key] = val
-        
+        breakpoint()
         msg = model.load_state_dict(new_state_dict, strict=False)
         
         logger.warning(msg)
@@ -359,18 +359,21 @@ class NativeScalerWithGradNormCount:
         self._scaler = torch.cuda.amp.GradScaler(enabled=grad_scaler_enabled)
 
     def __call__(self, loss, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):
-        self._scaler.scale(loss).backward(create_graph=create_graph)
-        if update_grad:
-            if clip_grad is not None and clip_grad > 0.0:
-                assert parameters is not None
-                # unscale the gradients of optimizer's assigned params in-place
-                self._scaler.unscale_(optimizer)
-                norm = torch.nn.utils.clip_grad_norm_(parameters, clip_grad)
+        if not torch.isnan(loss):
+            self._scaler.scale(loss).backward(create_graph=create_graph)
+            if update_grad:
+                if clip_grad is not None and clip_grad > 0.0:
+                    assert parameters is not None
+                    # unscale the gradients of optimizer's assigned params in-place
+                    self._scaler.unscale_(optimizer)
+                    norm = torch.nn.utils.clip_grad_norm_(parameters, clip_grad)
+                else:
+                    self._scaler.unscale_(optimizer)
+                    norm = ampscaler_get_grad_norm(parameters)
+                self._scaler.step(optimizer)
+                self._scaler.update()
             else:
-                self._scaler.unscale_(optimizer)
-                norm = ampscaler_get_grad_norm(parameters)
-            self._scaler.step(optimizer)
-            self._scaler.update()
+                norm = None
         else:
             norm = None
         return norm
