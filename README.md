@@ -121,7 +121,19 @@ NOTE: Demo will follow soon...
 - [ ] Integration with [HQ-SAM](https://github.com/SysCV/sam-hq) for refined masks
 
 ## Citations
-EdgeSAM:
+If this work helped you:
+```
+@software{edgesam_dyt,
+  author = {Krasner, Alex},
+  title = {EdgeSAM-DyT},
+  url = {https://github.com/Krasner/edgesam-dyt},
+  year = {2025}
+}
+```
+
+Also cite all of these:
+
+### EdgeSAM:
 ```bibtex
 @article{zhou2023edgesam,
   title={EdgeSAM: Prompt-In-the-Loop Distillation for On-Device Deployment of SAM},
@@ -130,7 +142,7 @@ EdgeSAM:
   year={2023}
 }
 ```
-Dynamic Tanh:
+### Dynamic Tanh:
 ```bibtex
 @inproceedings{Zhu2025DyT,
   title={Transformers without Normalization},
@@ -139,7 +151,7 @@ Dynamic Tanh:
   year={2025}
 }
 ```
-RepViT:
+### RepViT:
 ```
 @inproceedings{wang2024repvit,
   title={Repvit: Revisiting mobile cnn from vit perspective},
@@ -158,7 +170,7 @@ RepViT:
       primaryClass={cs.CV}
 }
 ```
-SAM:
+### SAM:
 ```
 @article{kirillov2023segany,
   title={Segment Anything},
@@ -166,4 +178,13 @@ SAM:
   journal={arXiv:2304.02643},
   year={2023}
 }
+```
+### HQ-SAM:
+```
+@inproceedings{sam_hq,
+    title={Segment Anything in High Quality},
+    author={Ke, Lei and Ye, Mingqiao and Danelljan, Martin and Liu, Yifan and Tai, Yu-Wing and Tang, Chi-Keung and Yu, Fisher},
+    booktitle={NeurIPS},
+    year={2023}
+} 
 ```
