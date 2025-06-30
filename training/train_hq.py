@@ -24,7 +24,7 @@ import cv2
 import random
 from typing import Dict, List, Tuple
 
-from edge_sam import build_sam_from_config, get_config
+from edge_sam import build_sam_from_config, get_config, sam_model_registry
 from optimizer import build_optimizer
 from lr_scheduler import build_scheduler
 from logger import create_logger
@@ -32,6 +32,8 @@ from utils import (
     add_common_args, load_checkpoint, load_pretrained, save_checkpoint,
     is_main_process, get_git_info,
     NativeScalerWithGradNormCount,
+    sigmoid_ce_loss,
+    dice_loss,
 )
 from my_meter import AverageMeter
 
@@ -103,12 +105,21 @@ def main(args, config, train_datasets, valid_datasets):
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = build_sam_from_config(config, None, False, False)
+    
+    teacher_sam_checkpoint = "/home/ubuntu/edgesam-dyt/weights/sam_hq_vit_h.pth"
+    teacher_model_type = "vit_h_hq"
+    teacher_model = sam_model_registry[teacher_model_type](checkpoint=teacher_sam_checkpoint)
+    teacher_model.eval()
+    # teacher_model.compile()
+    # teacher_model = torch.compile(teacher_model, mode="reduce-overhead")
 
     if not args.only_cpu:
         model.cuda()
+        teacher_model.cuda()
     if args.use_sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-
+        # teacher_model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    
     logger.info(str(model))
 
     optimizer = build_optimizer(config, model)
@@ -133,8 +144,12 @@ def main(args, config, train_datasets, valid_datasets):
         train_im_gt_list = get_im_gt_name_dict(train_datasets, flag="train")
         train_dataloaders, train_datasets = create_dataloaders(train_im_gt_list,
                                                         my_transforms = [
+                                                                    # Resize([1024,1024]),
                                                                     RandomHFlip(),
-                                                                    LargeScaleJitter()
+                                                                    LargeScaleJitter(
+                                                                        # aug_scale_min=0.5,
+                                                                        # aug_scale_max=1.25
+                                                                    ) # resizes to 1024
                                                                     ],
                                                         batch_size = config.DATA.BATCH_SIZE,
                                                         training = True)
@@ -170,9 +185,20 @@ def main(args, config, train_datasets, valid_datasets):
 
     # load image encoder weights
     load_pretrained(config, model_without_ddp.image_encoder, logger)
-    load_pretrained(config, model_without_ddp.prompt_encoder, logger, stage="prompt_encoer")
+    # load_pretrained(config, model_without_ddp.prompt_encoder, logger, stage="prompt_encoer")
     load_pretrained(config, model_without_ddp.mask_decoder, logger, stage="mask_decoder")
-
+    
+    prompt_encoder_weights = torch.load('weights/sam_vit_h_prompt_encoder.pth', map_location='cpu')
+    new_state_dict = {}
+    for k, v in prompt_encoder_weights.items():
+        _k = k.replace("prompt_encoder.","")
+        new_state_dict[_k] = v
+    msg = model_without_ddp.prompt_encoder.load_state_dict(new_state_dict, strict=False)
+    # msg = model_without_ddp.prompt_encoder.load_state_dict(prompt_encoder_weights, strict=False)
+    logger.warning(msg)
+    logger.info(f"=> loaded successfully 'prompt_encoder'")
+    del prompt_encoder_weights
+    
     ### --- Freeze all submodel expect for HQ part of mask decoder
     for param in model_without_ddp.image_encoder.parameters():
         param.requires_grad = False
@@ -184,12 +210,36 @@ def main(args, config, train_datasets, valid_datasets):
     
     for param in model_without_ddp.mask_decoder.parameters():
         param.requires_grad = False
+    # breakpoint()
+    # MANUALLY SET HF_TOKEN from teacher model
+    model_without_ddp.mask_decoder.hf_token.weight = teacher_model.mask_decoder.hf_token.weight
+    
+    # MANUALLY copy over other matching weights and biases
+    '''
+    for i, layer in enumerate(model_without_ddp.mask_decoder.embedding_encoder):
+        if hasattr(layer,'weight'):
+            layer.weight = teacher_model.mask_decoder.embedding_encoder[i].weight
+        if hasattr(layer,'bias'):
+            layer.bias = teacher_model.mask_decoder.embedding_encoder[i].bias
 
+    for i, layer in enumerate(model_without_ddp.mask_decoder.embedding_maskfeature):
+        if hasattr(layer,'weight'):
+            layer.weight = teacher_model.mask_decoder.embedding_maskfeature[i].weight
+        if hasattr(layer,'bias'):
+            layer.bias = teacher_model.mask_decoder.embedding_maskfeature[i].bias
+    
+    for i, layer in enumerate(model_without_ddp.mask_decoder.hf_mlp.layers):
+        if hasattr(layer,'weight'):
+            layer.weight = teacher_model.mask_decoder.hf_mlp.layers[i].weight
+        if hasattr(layer,'bias'):
+            layer.bias = teacher_model.mask_decoder.hf_mlp.layers[i].bias
+    '''
+    breakpoint()
     # hf_token, hf_mlp, compress_vit_feat, embedding_encoder, embedding_maskfeature
     for name, param in model_without_ddp.mask_decoder.named_parameters():
         if (
-            'hf_token' in name
-            or 'hf_mlp' in name
+            # 'hf_token' in name or
+            'hf_mlp' in name
             or 'compress_vit_feat' in name
             or 'embedding_encoder' in name
             or 'embedding_maskfeature' in name
@@ -200,7 +250,10 @@ def main(args, config, train_datasets, valid_datasets):
     n_parameters = sum(p.numel()
                        for p in model.parameters() if p.requires_grad)
     logger.info(f"number of params: {n_parameters}")
- 
+
+    if torch.sum(model_without_ddp.mask_decoder.hf_token.weight - teacher_model.mask_decoder.hf_token.weight) == 0:
+        logger.info("HF Token matches teacher as expected")
+    
     ### --- Step 3: Train or Evaluate ---
     # if not args.eval:
         # print("--- define optimizer ---")
@@ -215,7 +268,7 @@ def main(args, config, train_datasets, valid_datasets):
     logger.info("Start training")
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
-        train_step(args, config, model, optimizer, train_dataloaders, valid_dataloaders, epoch, lr_scheduler, loss_scaler, loss_writer)
+        train_step(args, config, model, optimizer, train_dataloaders, valid_dataloaders, teacher_model, epoch, lr_scheduler, loss_scaler, loss_writer)
 
         if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp,
@@ -241,7 +294,7 @@ def main(args, config, train_datasets, valid_datasets):
         evaluate(args, net, sam, valid_dataloaders, args.visualize)
     """
 
-def train_step(args, config, model, optimizer, train_dataloaders, valid_dataloaders, epoch, lr_scheduler, loss_scaler, loss_writer):
+def train_step(args, config, model, optimizer, train_dataloaders, valid_dataloaders, teacher_model, epoch, lr_scheduler, loss_scaler, loss_writer):
 
     model.train()
     set_bn_state(config, model)
@@ -266,7 +319,8 @@ def train_step(args, config, model, optimizer, train_dataloaders, valid_dataload
     metric_logger = misc.MetricLogger(delimiter="  ")
     train_dataloaders.batch_sampler.sampler.set_epoch(epoch)
 
-    for idx, data in enumerate(metric_logger.log_every(train_dataloaders,10)):
+    # for idx, data in enumerate(metric_logger.log_every(train_dataloaders,10)):
+    for idx, data in enumerate(train_dataloaders):
         
         meters['data_time'].update(time.time() - data_tic)
 
@@ -274,80 +328,198 @@ def train_step(args, config, model, optimizer, train_dataloaders, valid_dataload
         if torch.cuda.is_available():
             inputs = inputs.cuda()
             labels = labels.cuda()
-
+            
         imgs = inputs.permute(0, 2, 3, 1).cpu().numpy()
         batch_size = imgs.shape[0]
         
         # input prompt
-        input_keys = ['box','point','noise_mask']
+        # we only train with box and point prompts right now...
+        input_keys = ['box','point'] # ,'noise_mask']
+        # try:
+            # unlike sam-hq sample both positive and negative points
+            # positive
+        pos_labels_points = misc.masks_sample_points(labels[:,0,:,:]) # (b, n, 2)
+        # negative
+        neg_labels_points = misc.masks_sample_points(labels[:,0,:,:], positive=False)
+        
         labels_box = misc.masks_to_boxes(labels[:,0,:,:])
-        try:
-            labels_points = misc.masks_sample_points(labels[:,0,:,:])
-        except:
+        # except:
             # less than 10 points
-            input_keys = ['box','noise_mask']
+        #     input_keys = ['box'] # ,'noise_mask']
         labels_256 = F.interpolate(labels, size=(256, 256), mode='bilinear')
         labels_noisemask = misc.masks_noise(labels_256)
 
         batched_input = []
+        keep_labels = []
         for b_i in range(len(imgs)):
             dict_input = dict()
             input_image = torch.as_tensor(imgs[b_i].astype(dtype=np.uint8), device=model.device).permute(2, 0, 1).contiguous().float()
-            dict_input['image'] = input_image.requires_grad_(True)
+            if torch.any(torch.isnan(input_image)):
+                continue
+            dict_input['image'] = input_image # .requires_grad_(True)
             input_type = random.choice(input_keys)
-            if input_type == 'box':
-                dict_input['boxes'] = labels_box[b_i:b_i+1]# .requires_grad_(True)
-            elif input_type == 'point':
-                point_coords = labels_points[b_i:b_i+1]
-                dict_input['point_coords'] = point_coords# .requires_grad_(True)
-                dict_input['point_labels'] = torch.ones(point_coords.shape[1], device=point_coords.device)[None,:]# .requires_grad_(True)
-            elif input_type == 'noise_mask':
-                dict_input['mask_inputs'] = labels_noisemask[b_i:b_i+1]# .requires_grad_(True)
+
+            # chance to include box with points
+            # if ((input_type == 'box') or (input_type == 'point' and torch.rand(()) < 0.25)):
+            
+            _box = labels_box[b_i:b_i+1]
+            if (_box[0,0] == 1e8) or (_box[0,1] == 1e8):
+                _box = None
+
+            # dict_input['boxes'] = _box # .requires_grad_(True)
+
+            # elif input_type == 'point':
+            pos_point_coords = pos_labels_points[b_i]# :b_i+1]
+            neg_point_coords = neg_labels_points[b_i]# :b_i+1]
+            # if torch.any(pos_point_coords == 1e8) or torch.any(neg_point_coords == 1e8):
+            #     continue
+            if torch.all(pos_point_coords == 1e8):
+                point_coords, point_labels = None, None
             else:
-                raise NotImplementedError
+                valid_pos = ~torch.any(pos_point_coords == 1e8, 1)
+                valid_neg = ~torch.any(neg_point_coords == 1e8, 1)
+
+                pos_point_coords = pos_point_coords[valid_pos].unsqueeze(0)
+                neg_point_coords = neg_point_coords[valid_neg].unsqueeze(0)
+                
+                pos_labels = torch.ones(pos_point_coords.shape[1], device=pos_point_coords.device)[None,:]
+                neg_labels = torch.zeros(neg_point_coords.shape[1], device=neg_point_coords.device)[None,:]
+                
+                # select at least 1 positive point
+                # min(5, pos_point_coords.shape[1])
+                n_pos = torch.randint(1, pos_point_coords.shape[1], ())
+                if (neg_point_coords.shape[1] > 0) and (torch.rand(()) > 0.5):
+                    n_neg = torch.randint(0, neg_point_coords.shape[1], ())
+                else:
+                    n_neg = 0
+
+                point_coords = torch.cat((pos_point_coords[:, :n_pos], neg_point_coords[:, :n_neg]), 1)
+                point_labels = torch.cat((pos_labels[:, :n_pos], neg_labels[:, :n_neg]), 1)
+            # breakpoint()
+            
+            input_box = _box if torch.rand(()) > 0.5 else None
+            
+            if (input_box is not None) and torch.rand(()) < 0.25:
+                point_coords, point_labels = None, None
+
+            if (point_coords is None) and (input_box is None):
+                input_box = _box
+
+            # breakpoint()
+            dict_input['boxes'] = input_box
+            if point_coords is not None:
+                dict_input['point_coords'] = point_coords # .requires_grad_(True)
+                dict_input['point_labels'] = point_labels # torch.ones(point_coords.shape[1], device=point_coords.device)[None,:]# .requires_grad_(True)
+                
+            # elif input_type == 'noise_mask':
+            #     dict_input['mask_inputs'] = labels_noisemask[b_i:b_i+1]# .requires_grad_(True)
+            # else:
+            #     raise NotImplementedError
             dict_input['original_size'] = imgs[b_i].shape[:2]
             batched_input.append(dict_input)
+            keep_labels.append(labels[b_i:b_i+1])
 
+        if len(keep_labels) == 0:
+            print("All prompts were invalid... skipping")
+            continue
+
+        keep_labels = torch.cat(keep_labels, 0)
         # breakpoint()
-        with torch.cuda.amp.autocast(enabled=config.AMP_ENABLE):
-            outs = model(batched_input, num_multimask_outputs=1, training_mode=True)
-            # outs is list [batch_size] of dict with keys ['masks', 'iou_predictions', 'low_res_logits']
-            masks_hq = torch.concat([o['low_res_logits'] for o in outs], 0)
-            loss_mask, loss_dice = loss_masks(masks_hq, labels/255.0, len(masks_hq))
-        
-        total_loss = loss_mask + loss_dice
-        
-        loss_dict = {"loss_mask": loss_mask, "loss_dice":loss_dice}
+        with torch.autograd.set_detect_anomaly(True):
+            
+            # some masks_hq are NaN???
+            with torch.amp.autocast('cuda', dtype=torch.float16, enabled=config.AMP_ENABLE, cache_enabled=False):
+                outs = model(batched_input, num_multimask_outputs=1, training_mode=True)
+                # outs is list [batch_size] of dict with keys ['masks', 'iou_predictions', 'low_res_logits']
+                masks_hq = torch.concat([o['low_res_logits'] for o in outs], 0)
+                valid = [~torch.any(torch.isnan(m)) for m in masks_hq]
+                # print(valid)
+                masks_s = torch.stack([m for i, m in enumerate(masks_hq) if valid[i]], 0)
+                
+            _labels = torch.stack([l/255.0 for i, l in enumerate(keep_labels) if valid[i]], 0)
+            # loss_mask, loss_dice = loss_masks(masks_hq, labels/255.0, len(masks_hq))
+            loss_mask, loss_dice = loss_masks(masks_s.float(), _labels.float(), len(masks_s))
+            
+            total_loss = loss_mask + loss_dice
 
-        # print(f"loss_mask: {loss_mask.item()}")
-        # print(f"loss_dice: {loss_dice.item()}")
+            if torch.isnan(total_loss):
+                breakpoint()
 
-        # reduce losses over all GPUs for logging purposes
-        loss_dict_reduced = misc.reduce_dict(loss_dict)
-        losses_reduced_scaled = sum(loss_dict_reduced.values())
-        loss_value = losses_reduced_scaled.item()
-        meters['total_loss'].update(loss_value, len(masks_hq))
+            loss_dict = {
+                "loss_mask": loss_mask, 
+                "loss_dice":loss_dice,
+            }
 
-        if loss_writer is not None:
-            display_dict = {'total': total_loss}
-            for key in loss_dict:
-                display_dict[key] = loss_dict[key].item()
+            distill_loss_mask = 0.0
+            distill_loss_dice = 0.0
+            if config.TRAIN.ENABLE_DISTILL:
+                # distillation from teacher
+                with torch.no_grad(), torch.amp.autocast('cuda', dtype=torch.bfloat16, enabled=config.AMP_ENABLE):
+                    teacher_outs = teacher_model(batched_input, num_multimask_outputs=1)
+                    masks_t = torch.concat([o['low_res_logits'] for i, o in enumerate(teacher_outs) if valid[i]], 0)
 
-            loss_writer.add_scalars('loss', display_dict, epoch * num_steps + idx)
+                if config.DISTILL.DECODER_BCE > 0 or config.DISTILL.DECODER_FOCAL > 0 or config.DISTILL.DECODER_DICE > 0:
+                    _mask_s = masks_s.float()
+                    _mask_t = masks_t.float()
 
-        # optimizer.zero_grad()
-        # loss.backward()
-        # optimizer.step()
-        # this attribute is added by timm on one optimizer (adahessian)
-        is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
-        grad_norm = loss_scaler(total_loss, optimizer, clip_grad=config.TRAIN.CLIP_GRAD,
-                                parameters=model.parameters(), create_graph=is_second_order,
-                                update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
-        if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
-            optimizer.zero_grad()
-            lr_scheduler.step_update(
-                (epoch * num_steps + idx) // config.TRAIN.ACCUMULATION_STEPS)
-        loss_scale_value = loss_scaler.state_dict().get("scale", 1.0)
+                    temperature = config.DISTILL.TEMPERATURE
+                    _mask_s = _mask_s / temperature
+                    _mask_t = _mask_t / temperature
+
+                    target_logit = True
+                    if not config.DISTILL.USE_TEACHER_LOGITS:
+                        _mask_t = (_mask_t > 0.0).float()
+                        target_logit = False
+                    
+                    if config.DISTILL.DECODER_BCE > 0:
+                        distill_loss_mask = sigmoid_ce_loss(_mask_s, _mask_t, None, target_logit) * (temperature ** 2) * config.DISTILL.DECODER_BCE
+
+                    if config.DISTILL.DECODER_DICE > 0:
+                        distill_loss_dice = dice_loss(_mask_s, _mask_t, None, target_logit) * (temperature ** 2) * config.DISTILL.DECODER_DICE
+                
+                    # target_labels = (_mask_t > 0).float()
+                    # distill_loss_mask, distill_loss_dice = loss_masks(_mask_s, target_labels, len(masks_hq))
+                    # distill_loss_mask *= config.DISTILL.DECODER_BCE
+                    # distill_loss_dice *= config.DISTILL.DECODER_DICE
+
+                    total_loss = total_loss + distill_loss_mask + distill_loss_dice
+
+                loss_dict.update({
+                    "distill_loss_mask": distill_loss_mask,
+                    "distill_loss_dice": distill_loss_dice,
+                })
+
+            # print(f"loss_mask: {loss_mask.item()}")
+            # print(f"loss_dice: {loss_dice.item()}")
+            # print(loss_dict)
+
+            # reduce losses over all GPUs for logging purposes
+            loss_dict_reduced = misc.reduce_dict(loss_dict)
+            losses_reduced_scaled = sum(loss_dict_reduced.values())
+            loss_value = losses_reduced_scaled.item()
+            meters['total_loss'].update(loss_value, len(masks_s))
+
+            if loss_writer is not None:
+                display_dict = {'total': total_loss}
+                for key in loss_dict:
+                    display_dict[key] = loss_dict[key].item()
+
+                loss_writer.add_scalars('loss', display_dict, epoch * num_steps + idx)
+
+            # optimizer.zero_grad()
+            # loss.backward()
+            # optimizer.step()
+            # this attribute is added by timm on one optimizer (adahessian)
+            is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
+            
+            grad_norm = loss_scaler(total_loss, optimizer, clip_grad=config.TRAIN.CLIP_GRAD,
+                                    parameters=model.parameters(), create_graph=is_second_order,
+                                    update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
+            if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
+                optimizer.zero_grad()
+                lr_scheduler.step_update(
+                    (epoch * num_steps + idx) // config.TRAIN.ACCUMULATION_STEPS)
+            loss_scale_value = loss_scaler.state_dict().get("scale", 1.0)
 
         torch.cuda.synchronize()
 

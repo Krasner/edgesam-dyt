@@ -107,7 +107,7 @@ class Resize(object):
         imidx, image, label, shape =  sample['imidx'], sample['image'], sample['label'], sample['shape']
 
         image = torch.squeeze(F.interpolate(torch.unsqueeze(image,0),self.size,mode='bilinear'),dim=0)
-        label = torch.squeeze(F.interpolate(torch.unsqueeze(label,0),self.size,mode='bilinear'),dim=0)
+        label = torch.squeeze(F.interpolate(torch.unsqueeze(label,0),self.size,mode='nearest'),dim=0)
 
         return {'imidx':imidx,'image':image, 'label':label, 'shape':torch.tensor(self.size)}
 
@@ -173,7 +173,7 @@ class LargeScaleJitter(object):
         scaled_size = (image_size * scale).round().long()
         
         scaled_image = torch.squeeze(F.interpolate(torch.unsqueeze(image,0),scaled_size.tolist(),mode='bilinear'),dim=0)
-        scaled_label = torch.squeeze(F.interpolate(torch.unsqueeze(label,0),scaled_size.tolist(),mode='bilinear'),dim=0)
+        scaled_label = torch.squeeze(F.interpolate(torch.unsqueeze(label,0),scaled_size.tolist(),mode='nearest'),dim=0)
         
         # random crop
         crop_size = (min(self.desired_size, scaled_size[0]), min(self.desired_size, scaled_size[1]))
@@ -191,7 +191,8 @@ class LargeScaleJitter(object):
         # pad
         padding_h = max(self.desired_size - scaled_image.size(1), 0).item()
         padding_w = max(self.desired_size - scaled_image.size(2), 0).item()
-        image = F.pad(scaled_image, [0,padding_w, 0,padding_h],value=128)
+        # image = F.pad(scaled_image, [0,padding_w, 0,padding_h],value=128)
+        image = F.pad(scaled_image, [0,padding_w, 0,padding_h])
         label = F.pad(scaled_label, [0,padding_w, 0,padding_h],value=0)
 
         return {'imidx':imidx,'image':image, 'label':label, 'shape':torch.tensor(image.shape[-2:])}

@@ -63,7 +63,7 @@ if __name__ == "__main__":
     # sam_checkpoint = "./pretrained_checkpoint/sam_hq_vit_l.pth"
     # sam_checkpoint = "/home/ubuntu/sam-hq/train/work_dirs/hq_sam_h/sam_hq_epoch_11.pth"
     # model_type = "vit_h"
-    # sam_checkpoint = "../output/rep_vit_m1_dyt_hq_fuse_enc_dec/default/ckpt_epoch_11.pth"
+    # sam_checkpoint = "../output/rep_vit_m1_dyt_hq_fuse_enc_dec/default/ckpt_epoch_40.pth"
     # model_type = "edge_sam_dyt_hq"
     sam_checkpoint = "../output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth"
     model_type = "edge_sam_dyt"
@@ -125,7 +125,7 @@ if __name__ == "__main__":
         os.makedirs(result_path, exist_ok=True)
 
         if not batch_box: 
-            masks, scores, logits = predictor.predict(
+            masks, scores, logits, _, _ = predictor.predict(
                 point_coords=input_point,
                 point_labels=input_label,
                 box = input_box,
@@ -136,7 +136,7 @@ if __name__ == "__main__":
             show_res(masks,scores,input_point, input_label, input_box, result_path + 'example'+str(i), image)
         
         else:
-            masks, scores, logits = predictor.predict_torch(
+            masks, scores, logits, _, _ = predictor.predict_torch(
                 point_coords=input_point,
                 point_labels=input_label,
                 boxes=transformed_box,

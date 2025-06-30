@@ -398,6 +398,9 @@ def masks_to_boxes(masks):
     y_max = y_mask.flatten(1).max(-1)[0]
     y_min = y_mask.masked_fill(~(masks>128), 1e8).flatten(1).min(-1)[0]
 
+    # if torch.any(x_min == 1e8) or torch.any(y_min == 1e8):
+    #     breakpoint()
+
     return torch.stack([x_min, y_min, x_max, y_max], 1)
 
 
@@ -427,7 +430,7 @@ def box_noise(boxes, box_noise_scale=0):
 
     return boxes
 
-def masks_sample_points(masks,k=10):
+def masks_sample_points(masks,k=10,positive=True):
     """Sample points on mask
     """
     if masks.numel() == 0:
@@ -444,7 +447,11 @@ def masks_sample_points(masks,k=10):
     # k = 10
     samples = []
     for b_i in range(len(masks)):
-        select_mask = (masks[b_i]>128)
+        if positive:
+            select_mask = (masks[b_i]>128)
+        else:
+            select_mask = (masks[b_i]<128)
+            
         x_idx = torch.masked_select(x,select_mask)
         y_idx = torch.masked_select(y,select_mask)
         
@@ -453,9 +460,19 @@ def masks_sample_points(masks,k=10):
         samples_x = x_idx[idx]
         samples_y = y_idx[idx]
         samples_xy = torch.cat((samples_x[:,None],samples_y[:,None]),dim=1)
-        samples.append(samples_xy)
+        if samples_xy.shape[0] == k:
+            samples.append(samples_xy)
+        else:
+            pad = 1e8*torch.ones((k-samples_xy.shape[0], 2)).to(masks)
+            samples_xy = torch.cat((samples_xy, pad), 0)
+            # remove these from batch
+            samples.append(samples_xy)
 
+    # try:
     samples = torch.stack(samples)
+    # except:
+    #     breakpoint()
+
     return samples
 
 

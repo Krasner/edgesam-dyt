@@ -163,7 +163,7 @@ def load_pretrained(config, model, logger, stage="image_encoder"):
             if key.startswith(f"{stage}."):
                 _key = key.replace(f"{stage}.","")
                 new_state_dict[_key] = val
-        breakpoint()
+        # breakpoint()
         msg = model.load_state_dict(new_state_dict, strict=False)
         
         logger.warning(msg)
@@ -356,7 +356,7 @@ class NativeScalerWithGradNormCount:
     state_dict_key = "amp_scaler"
 
     def __init__(self, grad_scaler_enabled=True):
-        self._scaler = torch.cuda.amp.GradScaler(enabled=grad_scaler_enabled)
+        self._scaler = torch.amp.GradScaler('cuda',enabled=grad_scaler_enabled)
 
     def __call__(self, loss, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):
         if not torch.isnan(loss):
@@ -456,10 +456,11 @@ def sigmoid_ce_loss(inputs, targets, valid=None, target_logit=False):
     Returns:
         Loss tensor
     """
-    inputs = inputs.sigmoid()
+    # inputs = inputs.sigmoid()
     if target_logit:
         targets = targets.sigmoid()
-    loss = F.binary_cross_entropy(inputs, targets, reduction="none")
+    # loss = F.binary_cross_entropy(inputs, targets, reduction="none")
+    loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
 
     if valid is not None:
         loss = loss.flatten(1)

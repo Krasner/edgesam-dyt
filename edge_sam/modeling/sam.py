@@ -216,75 +216,84 @@ class Sam(nn.Module):
                 shape BxCxHxW, where H=W=256. Can be passed as mask input
                 to subsequent iterations of prediction.
         """
-        _ = torch.set_grad_enabled(training_mode)
+        # _ = torch.set_grad_enabled(training_mode)
 
-        input_images = torch.stack([self.preprocess(x["image"]) for x in batched_input], dim=0)
-        image_encoder_outs = self.image_encoder(input_images)
-        interm_embeddings = None
-        if self.use_rpn:
-            image_embeddings = image_encoder_outs[-1]
-            proposals = self.forward_rpn(image_encoder_outs[:-1])
-        else:
-            if isinstance(image_encoder_outs, tuple):
-                image_embeddings, interm_embeddings = image_encoder_outs
+        with torch.no_grad():
+            input_images = torch.stack([self.preprocess(x["image"]) for x in batched_input], dim=0)
+            image_encoder_outs = self.image_encoder(input_images)
+            interm_embeddings = None
+            if self.use_rpn:
+                image_embeddings = image_encoder_outs[-1]
+                proposals = self.forward_rpn(image_encoder_outs[:-1])
             else:
-                image_embeddings = image_encoder_outs
+                if isinstance(image_encoder_outs, tuple):
+                    # expect outputs
+                    # ( (B, 256, 64, 64), [ (B,48,256,256), (B,48,256,256), (B,96,128,128) ] )
+                    image_embeddings, interm_embeddings = image_encoder_outs
+                else:
+                    image_embeddings = image_encoder_outs
 
-        outputs = []
-        for i, (image_record, curr_embedding) in enumerate(zip(batched_input, image_embeddings)):
-            if "point_coords" in image_record:
-                points = (image_record["point_coords"], image_record["point_labels"])
-            else:
-                points = None
-            sparse_embeddings, dense_embeddings = self.prompt_encoder(
-                points=points,
-                boxes=image_record.get("boxes", None),
-                masks=image_record.get("mask_inputs", None),
-            )
+        with torch.set_grad_enabled(training_mode):
+            outputs = []
+            for i, (image_record, curr_embedding) in enumerate(zip(batched_input, image_embeddings)):
+                if "point_coords" in image_record:
+                    points = (image_record["point_coords"], image_record["point_labels"])
+                else:
+                    points = None
+                sparse_embeddings, dense_embeddings = self.prompt_encoder(
+                    points=points,
+                    boxes=image_record.get("boxes", None),
+                    masks=image_record.get("mask_inputs", None),
+                )
+                if torch.any(torch.isnan(sparse_embeddings)):
+                    breakpoint()
 
-            if interm_embeddings is not None:
-                curr_interm = [interm[i].unsqueeze(0) for interm in interm_embeddings]
-            else:
-                curr_interm = None
+                if torch.any(torch.isnan(dense_embeddings)):
+                    breakpoint()
 
-            # low_res_masks, iou_predictions 
-            mask_outs = self.mask_decoder(
-                image_embeddings=curr_embedding.unsqueeze(0),
-                image_pe=self.prompt_encoder.get_dense_pe(),
-                sparse_prompt_embeddings=sparse_embeddings,
-                dense_prompt_embeddings=dense_embeddings,
-                num_multimask_outputs=num_multimask_outputs,
-                interm_embeddings=curr_interm,
-                hq_token_only=False,
-            )
-            if len(mask_outs) == 2:
-                # standard version
-                low_res_masks, iou_predictions = mask_outs
-                low_res_masks_sam = None
-            elif len(mask_outs) == 3:
-                # hq version
-                # hq masks, original masks, iou
-                low_res_masks, low_res_masks_sam, iou_predictions = mask_outs
+                if interm_embeddings is not None:
+                    curr_interm = [interm[i].unsqueeze(0) for interm in interm_embeddings]
+                else:
+                    curr_interm = None
 
-            masks = self.postprocess_masks(
-                low_res_masks,
-                input_size=image_record["image"].shape[-2:],
-                original_size=image_record["original_size"],
-            )
-            masks = masks > self.mask_threshold
-            outputs.append(
-                {
-                    "masks": masks,
-                    "iou_predictions": iou_predictions,
-                    "low_res_logits": low_res_masks,
-                }
-            )
+                # low_res_masks, iou_predictions 
+                mask_outs = self.mask_decoder(
+                    image_embeddings=curr_embedding.unsqueeze(0),
+                    image_pe=self.prompt_encoder.get_dense_pe(),
+                    sparse_prompt_embeddings=sparse_embeddings,
+                    dense_prompt_embeddings=dense_embeddings,
+                    num_multimask_outputs=num_multimask_outputs,
+                    interm_embeddings=curr_interm,
+                    hq_token_only=True,
+                )
+                if len(mask_outs) == 2:
+                    # standard version
+                    low_res_masks, iou_predictions = mask_outs
+                    low_res_masks_sam = None
+                elif len(mask_outs) == 3:
+                    # hq version
+                    # hq masks, original masks, iou
+                    low_res_masks, low_res_masks_sam, iou_predictions = mask_outs
 
-            if low_res_masks_sam is not None:
-                outputs[i].update({"low_res_logits_sam": low_res_masks_sam})
+                masks = self.postprocess_masks(
+                    low_res_masks,
+                    input_size=image_record["image"].shape[-2:],
+                    original_size=image_record["original_size"],
+                )
+                # masks = masks > self.mask_threshold
+                outputs.append(
+                    {
+                        "masks": masks > self.mask_threshold,
+                        "iou_predictions": iou_predictions,
+                        "low_res_logits": low_res_masks,
+                    }
+                )
 
-        # if interm_embeddings is not None:
-        #     outputs.append(interm_embeddings)
+                if low_res_masks_sam is not None:
+                    outputs[i].update({"low_res_logits_sam": low_res_masks_sam})
+
+            # if interm_embeddings is not None:
+            #     outputs.append(interm_embeddings)
 
         return outputs
 

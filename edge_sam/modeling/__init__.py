@@ -11,3 +11,5 @@ from .mask_decoder import MaskDecoder, MaskDecoderHQ
 from .prompt_encoder import PromptEncoder
 from .transformer import TwoWayTransformer
 from .rep_vit import *
+from .image_encoder_hq import ImageEncoderViT as ImageEncoderViT_HQ
+from .mask_decoder_hq import MaskDecoderHQ as MaskDecoderHQ_ViT

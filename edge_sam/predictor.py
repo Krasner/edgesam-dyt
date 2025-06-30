@@ -158,7 +158,7 @@ class SamPredictor:
             mask_input_torch = torch.as_tensor(mask_input, dtype=torch.float, device=self.device)
             mask_input_torch = mask_input_torch[None, :, :, :]
 
-        masks, iou_predictions, low_res_masks = self.predict_torch(
+        masks, masks_sam, iou_predictions, low_res_masks, low_res_masks_sam = self.predict_torch(
             features,
             coords_torch,
             labels_torch,
@@ -172,14 +172,20 @@ class SamPredictor:
         masks_np = masks[0].detach().cpu().numpy()
         iou_predictions_np = iou_predictions[0].detach().cpu().numpy()
         low_res_masks_np = low_res_masks[0].detach().cpu().numpy()
-        return masks_np, iou_predictions_np, low_res_masks_np
+        if low_res_masks_sam is not None:
+          masks_sam_np = masks_sam[0].detach().cpu().numpy()
+          low_res_masks_sam_np = low_res_masks_sam[0].detach().cpu().numpy()
+        else:
+          masks_sam_np = None
+          low_res_masks_sam_np = None
+        return masks_np, iou_predictions_np, low_res_masks_np, masks_sam_np, low_res_masks_sam_np
 
     @torch.no_grad()
     def predict_torch(
         self,
-        features: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        point_coords: Optional[torch.Tensor],
-        point_labels: Optional[torch.Tensor],
+        features: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]] = None,
+        point_coords: Optional[torch.Tensor] = None,
+        point_labels: Optional[torch.Tensor] = None,
         boxes: Optional[torch.Tensor] = None,
         mask_input: Optional[torch.Tensor] = None,
         num_multimask_outputs: int = 3,
@@ -270,11 +276,16 @@ class SamPredictor:
 
         # Upscale the masks to the original image resolution
         masks = self.model.postprocess_masks(low_res_masks, self.input_size, self.original_size)
-
+        if low_res_masks_sam is not None:
+          masks_sam = self.model.postprocess_masks(low_res_masks_sam, self.input_size, self.original_size)
+        else:
+          masks_sam = None
         if not return_logits:
             masks = masks > self.model.mask_threshold
+            if masks_sam is not None:
+              masks_sam = masks_sam > self.model.mask_threshold
 
-        return masks, iou_predictions, low_res_masks
+        return masks, masks_sam, iou_predictions, low_res_masks, low_res_masks_sam
 
     def get_image_embedding(self) -> torch.Tensor:
         """

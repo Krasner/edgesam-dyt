@@ -171,6 +171,8 @@ _C.TRAIN.USE_CHECKPOINT = False
 _C.TRAIN.LAYER_LR_DECAY = 1.0
 # batch norm is in evaluation mode when training
 _C.TRAIN.EVAL_BN_WHEN_TRAINING = False
+# should DISTILLATION be used
+_C.TRAIN.ENABLE_DISTILL = True
 
 # LR scheduler
 _C.TRAIN.LR_SCHEDULER = CN()
