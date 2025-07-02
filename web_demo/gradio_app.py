@@ -37,6 +37,11 @@ parser.add_argument(
     help="Use ONNX to speed up the inference.",
 )
 parser.add_argument(
+    "--hq",
+    action="store_true",
+    help="Use HQ model.",
+)
+parser.add_argument(
     "--server-name",
     default="0.0.0.0",
     type=str,
@@ -56,7 +61,10 @@ if args.enable_onnx:
     predictor = SamPredictorONNX(args.encoder_onnx_path, args.decoder_onnx_path)
 else:
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    sam = sam_model_registry["edge_sam_dyt"](checkpoint=args.checkpoint, upsample_mode="bicubic")
+    if args.hq:
+        sam = sam_model_registry["edge_sam_dyt_hq"](checkpoint=args.checkpoint, upsample_mode="bicubic")
+    else:
+        sam = sam_model_registry["edge_sam_dyt"](checkpoint=args.checkpoint, upsample_mode="bicubic")
     sam = sam.to(device=device)
     sam.eval()
     predictor = SamPredictor(sam)
@@ -208,7 +216,7 @@ def segment_with_points(
     else:
         coord_np = np.array(session_state['coord_list'])
         label_np = np.array(session_state['label_list'])
-        masks, scores, logits = predictor.predict(
+        masks, scores, *_ = predictor.predict(
             features=session_state['feature'],
             point_coords=coord_np,
             point_labels=label_np,
@@ -280,14 +288,14 @@ def segment_with_box(
         if args.enable_onnx:
             point_coords = box_np.reshape(2, 2)[None]
             point_labels = np.array([2, 3])[None]
-            masks, _, _ = predictor.predict(
+            masks, *_ = predictor.predict(
                 features=session_state['feature'],
                 point_coords=point_coords,
                 point_labels=point_labels,
             )
             annotations = masks[:, 0, :, :]
         else:
-            masks, scores, _ = predictor.predict(
+            masks, scores, *_ = predictor.predict(
                 features=session_state['feature'],
                 box=box_np,
                 num_multimask_outputs=1,

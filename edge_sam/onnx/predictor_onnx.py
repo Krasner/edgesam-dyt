@@ -125,3 +125,72 @@ class SamPredictorONNX:
         mask = cv2.resize(mask, (self.original_size[1], self.original_size[0]), interpolation=cv2.INTER_LINEAR)
         mask = mask.transpose(2, 0, 1)[None, :, :, :]
         return mask
+
+class SamPredictorONNXHQ(SamPredictorONNX):
+    def set_image(
+            self,
+            image: np.ndarray,
+            image_format: str = "RGB",
+    ) -> None:
+        assert image_format in [
+            "RGB",
+            "BGR",
+        ], f"image_format must be in ['RGB', 'BGR'], is {image_format}."
+        if image_format != self.image_format:
+            image = image[..., ::-1]
+
+        # Transform the image to the form expected by the model
+        input_image = self.transform.apply_image(image)
+        input_image = input_image.transpose(2, 0, 1)[None, :, :, :]
+        self.reset_image()
+        self.original_size = image.shape[:2]
+        self.input_size = tuple(input_image.shape[-2:])
+        input_image = self.preprocess(input_image).astype(np.float32)
+        outputs = self.encoder.run(None, {'image': input_image})
+        # take all (will be a tuple)
+        self.features = outputs
+        self.is_image_set = True
+
+        return self.features
+    
+    def predict(
+            self,
+            point_coords: np.ndarray,
+            point_labels: np.ndarray,
+            boxes: np.ndarray,
+            features: Optional[np.ndarray] = None,
+            point_valid: np.ndarray = np.ones((1,1), bool),
+            boxes_valid: np.ndarray = np.zeros((1,1), bool),
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        if features is None and not self.is_image_set:
+            raise RuntimeError("An image must be set with .set_image(...) before mask prediction.")
+        if features is None:
+            features = self.features
+
+        if point_coords is not None:
+            point_coords = self.transform.apply_coords(point_coords, self.original_size)
+            point_coords = point_coords.astype(np.float32)
+            point_labels = point_labels.astype(np.float32)
+
+        
+        if boxes is not None:
+            boxes = self.transform.apply_boxes(boxes, self.original_size)
+            boxes = boxes[None].astype(np.float32)
+            print(f"{boxes.shape=}")
+
+        outputs = self.decoder.run(None, {
+            'image_embeddings': features[0],
+            'point_coords': point_coords,
+            'point_labels': point_labels,
+            'boxes': boxes,
+            'point_valid': point_valid,
+            'boxes_valid': boxes_valid,
+            'interm_embeddings_0': features[1],
+            'interm_embeddings_1': features[2],
+            'interm_embeddings_2': features[3],
+        })
+        scores, low_res_masks = outputs[0], outputs[1]
+        masks = self.postprocess_masks(low_res_masks)
+        masks = masks > self.mask_threshold
+
+        return masks, scores, low_res_masks

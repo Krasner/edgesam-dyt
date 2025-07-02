@@ -1,7 +1,7 @@
 import torch
 import argparse
 from edge_sam import sam_model_registry
-from edge_sam.utils.coreml import SamCoreMLModel
+from edge_sam.utils.coreml import SamCoreMLModel, SamCoreMLModelHQ
 import onnx, onnxsim
 
 
@@ -49,6 +49,12 @@ parser.add_argument(
     help="If set, upsample output masks",
 )
 
+parser.add_argument(
+    "--hq",
+    action="store_true",
+    help="If set, uses edgesam_dyt_hq",
+)
+
 def export_encoder_to_onnx(sam, args):
     if args.gelu_approximate:
         for n, m in sam.named_modules():
@@ -56,14 +62,25 @@ def export_encoder_to_onnx(sam, args):
                 m.approximate = "tanh"
 
     image_input = torch.randn(1, 3, 1024, 1024, dtype=torch.float)
-    sam.forward = sam.forward_dummy_encoder
+    if args.hq:
+        sam.forward = sam.forward_dummy_encoder_hq
+    else:
+        sam.forward = sam.forward_dummy_encoder
 
-    traced_model = torch.jit.trace(sam, image_input)
-
+    traced_model = torch.jit.trace(sam, image_input, strict=False)
+    breakpoint()
     # Define the input names and output names
     input_names = ["image"]
     output_names = ["image_embeddings"]
+    if args.hq:
+        # output_names.append("interm_embeddings")
+        output_names.extend([
+            "interm_embeddings_0",
+            "interm_embeddings_1",
+            "interm_embeddings_2",
+        ])
 
+    print(f"{output_names=}")
     # Export the encoder model to ONNX format
     onnx_encoder_filename = args.checkpoint.replace('.pth', '_encoder.onnx')
     torch.onnx.export(
@@ -73,7 +90,7 @@ def export_encoder_to_onnx(sam, args):
         input_names=input_names,
         output_names=output_names,
         opset_version=17,  # Use an appropriate ONNX opset version
-        verbose=False
+        verbose=True,
     )
 
     print(f"Exported ONNX encoder model to {onnx_encoder_filename}")
@@ -82,11 +99,18 @@ def export_encoder_to_onnx(sam, args):
 
 
 def export_decoder_to_onnx(sam, args):
-    sam_decoder = SamCoreMLModel(
-        model=sam,
-        use_stability_score=args.use_stability_score,
-        upsample_masks=args.upsample,
-    )
+    if args.hq:
+        sam_decoder = SamCoreMLModelHQ(
+            model=sam,
+            use_stability_score=args.use_stability_score,
+            upsample_masks=args.upsample,
+        )
+    else:
+        sam_decoder = SamCoreMLModel(
+            model=sam,
+            use_stability_score=args.use_stability_score,
+            upsample_masks=args.upsample,
+        )
     sam_decoder.eval()
 
     if args.gelu_approximate:
@@ -108,13 +132,28 @@ def export_decoder_to_onnx(sam, args):
 
     # Define the input names and output names
     input_names = ["image_embeddings", "point_coords", "point_labels", "boxes", "point_valid", "boxes_valid"]
+    inputs = [image_embeddings, point_coords, point_labels, boxes, point_valid, boxes_valid]
+    if args.hq:
+        input_names.extend([
+            "interm_embeddings_0",
+            "interm_embeddings_1",
+            "interm_embeddings_2",
+        ])
+
+        interm_embeddings = [
+            torch.randn(1, 48, 256, 256, dtype=torch.float),
+            torch.randn(1, 48, 256, 256, dtype=torch.float),
+            torch.randn(1, 96, 128, 128, dtype=torch.float),
+        ]
+        inputs.extend(interm_embeddings)
+
     output_names = ["scores", "masks"]
 
     # Export the decoder model to ONNX format
     onnx_decoder_filename = args.checkpoint.replace('.pth', '_decoder.onnx')
     torch.onnx.export(
         sam_decoder,
-        (image_embeddings, point_coords, point_labels, boxes, point_valid, boxes_valid),
+        tuple(inputs),
         onnx_decoder_filename,
         input_names=input_names,
         output_names=output_names,
@@ -150,7 +189,10 @@ def simplify(f):
 if __name__ == "__main__":
     args = parser.parse_args()
     print("Loading model...")
-    sam = sam_model_registry["edge_sam_dyt"](checkpoint=args.checkpoint, upsample_mode="bilinear")
+
+    version = "edge_sam_dyt_hq" if args.hq else "edge_sam_dyt"
+
+    sam = sam_model_registry[version](checkpoint=args.checkpoint, upsample_mode="bilinear")
     sam.eval()
     # breakpoint()
     if args.decoder:

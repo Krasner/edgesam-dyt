@@ -53,6 +53,7 @@ cd ~/edgesam-dyt/web_demo/
 
 PYTHONPATH=/home/ubuntu/edgesam-dyt/ python gradio_app.py --checkpoint "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth" --server-name=0.0.0.0 --port=7680
 ```
+adding `--hq` will switch to edgesam-dyt-hq model
 
 ## Usage
 See `notebooks/predictor_example.ipynb`

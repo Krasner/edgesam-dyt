@@ -460,7 +460,7 @@ class RepViT(nn.Module):
             return tuple(out)
         
         if self.return_low_feats:
-            feats =  [output_dict[n] for n in self.feature_names]
+            feats =  tuple([output_dict[n] for n in self.feature_names])
             return x, feats # output_dict['stem']
             
         return x

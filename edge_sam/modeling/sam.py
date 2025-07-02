@@ -118,20 +118,34 @@ class Sam(nn.Module):
     def device(self) -> Any:
         return self.pixel_mean.device
 
+    @torch.no_grad()
+    def forward_dummy_encoder_hq(self, x):
+        image_encoder_outs = self.image_encoder(x)
+        outs = tuple([
+            image_encoder_outs[0], 
+            image_encoder_outs[1][0],
+            image_encoder_outs[1][1],
+            image_encoder_outs[1][2],
+        ])
+        return outs
     # For FLOPs, params count, and speed test
     @torch.no_grad()
     def forward_dummy_encoder(self, x):
         image_encoder_outs = self.image_encoder(x)
-        if not isinstance(image_encoder_outs, tuple):
-            outs = (image_encoder_outs,)
-        else:
-            out = image_encoder_outs
+        # if not isinstance(image_encoder_outs, tuple):
+        #     outs = (image_encoder_outs,)
+        # else:
+        #     # outs = [image_encoder_outs[0], *image_encoder_outs[1]]
+        
+        outs = image_encoder_outs
+
         if self.use_rpn:
             image_embeddings = image_encoder_outs[-1]
             proposals = self.forward_rpn(image_encoder_outs[:-1])
             outs += (proposals[0].bboxes, proposals[0].scores)
         else:
             image_embeddings = image_encoder_outs
+
         return outs
 
     # For FLOPs and params count
