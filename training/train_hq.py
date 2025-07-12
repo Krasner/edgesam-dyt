@@ -338,9 +338,9 @@ def train_step(args, config, model, optimizer, train_dataloaders, valid_dataload
         # try:
             # unlike sam-hq sample both positive and negative points
             # positive
-        pos_labels_points = misc.masks_sample_points(labels[:,0,:,:]) # (b, n, 2)
+        pos_labels_points = misc.masks_sample_points(labels[:,0,:,:], k=5) # (b, n, 2)
         # negative
-        neg_labels_points = misc.masks_sample_points(labels[:,0,:,:], positive=False)
+        neg_labels_points = misc.masks_sample_points(labels[:,0,:,:], k=5, positive=False)
         
         labels_box = misc.masks_to_boxes(labels[:,0,:,:])
         # except:
@@ -454,7 +454,7 @@ def train_step(args, config, model, optimizer, train_dataloaders, valid_dataload
             distill_loss_dice = 0.0
             if config.TRAIN.ENABLE_DISTILL:
                 # distillation from teacher
-                with torch.no_grad(), torch.amp.autocast('cuda', dtype=torch.bfloat16, enabled=config.AMP_ENABLE):
+                with torch.no_grad(), torch.amp.autocast('cuda', dtype=torch.float16, enabled=config.AMP_ENABLE):
                     teacher_outs = teacher_model(batched_input, num_multimask_outputs=1)
                     masks_t = torch.concat([o['low_res_logits'] for i, o in enumerate(teacher_outs) if valid[i]], 0)
 

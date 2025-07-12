@@ -56,4 +56,8 @@ cd ./weights
 # sam_hq_vit_h.pth from sam-hq repo
 gdown 1qobFYrI4eyIANfBSmYcGuWRaSIXfMOQ8
 cd ..
-CUDA_VISIBLE_DEVICES=0 PYTHONPATH="/home/ubuntu/edgesam-dyt/" python -m torch.distributed.launch --master_port 29501 --nproc_per_node 1 training/train_hq.py --cfg training/configs/rep_vit_m1_dyt_hq_fuse_enc_dec.yaml --output ./output/ --batch-size 4
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH="/home/ubuntu/edgesam-dyt/" python -m torch.distributed.launch --master_port 29501 --nproc_per_node 1 training/train_hq.py --cfg training/configs/rep_vit_m1_dyt_hq_fuse_enc_dec.yaml --output ./output/ --batch-size 16
+
+# export onnx
+PYTHONPATH="/home/ubuntu/edgesam-dyt/" python scripts/export_onnx_model.py "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_hq_fuse_enc_dec/default/ckpt_epoch_40.pth" --simplify --hq
+PYTHONPATH="/home/ubuntu/edgesam-dyt/" python scripts/export_onnx_model.py "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_hq_fuse_enc_dec/default/ckpt_epoch_40.pth" --simplify --hq --decoder --upsample

@@ -7,6 +7,17 @@ The goal is to create a fast and accurate general segmentation model for edge de
 
 This codebase adapts the code in the EdgeSAM repo.
 
+## Updates
+__2025-07-12__
+
+We attempt to improve segmentation results with an **HQ** version of the model. Using the [datasets](https://huggingface.co/sam-hq-team/sam-hq-training/tree/main/data) listed in [sam-hq](https://github.com/SysCV/sam-hq) we distill the ViT-H HQ-SAM checkpoint.
+
+Unlike HQ-SAM, since we use RepViT as the image encoder, we extract 3 intermediate convolutional layers, which are then fed to the [HQ MaskDecoder](./edge_sam/modeling/mask_decoder.py#L223). Layers needed to accomodate the intermediate features also use DyT layers.
+
+Issues:
+  - Training with amp float16 precision causes a NaN crash but float32 and bfloat16 work. We are not yet able to determine the reason (all previous steps trained with float16)
+  - Training crashes consistently on epoch 41 (the config file specifies 48 epochs of training)
+
 ## Pretrained Models
 We train against 5% of SA-1B and provide distillation checkpoints below:
 
@@ -14,7 +25,9 @@ STEP 1: [PyTorch](https://drive.google.com/file/d/14zMPCbdInahfwNS8rHIMdpY2m7szV
 
 STEP 2: [PyTorch](https://drive.google.com/file/d/1lsd2TsfYMgBN3NJGxGVs-HEu2DANaJQz/view?usp=drive_link) 
 
-STEP 3 (Final Model): [PyTorch](https://drive.google.com/file/d/1YFBE939hOeraelSXm4lEYzoOLR-WQRtS/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/12jHKCPMymUqdQvh8BbSEcPcC3hYgxGS3/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1SSovZSC95RcboqI7HQtmwXTFG3i_L4RV/view?usp=drive_link)
+STEP 3 (Final Base Model): [PyTorch](https://drive.google.com/file/d/1YFBE939hOeraelSXm4lEYzoOLR-WQRtS/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/12jHKCPMymUqdQvh8BbSEcPcC3hYgxGS3/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1SSovZSC95RcboqI7HQtmwXTFG3i_L4RV/view?usp=drive_link)
+
+STEP 4 (OPTIONAL HQ Model): [PyTorch](https://drive.google.com/file/d/1RDYV3nQex9owmp28mxvg1d9yaQ-e1cJK/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/14twlBMSn-XH6hCP6GJHYLoDwAW3okV5O/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1LxUCxf8NwLgsXc93KA2jB_BtmniOjhgV/view?usp=drive_link)
 
 ## Reproducibility
 We provide the full script in `scripts/download_data_and_run_distillation.sh`
@@ -51,9 +64,12 @@ pip install -r requirements.txt
 ```
 cd ~/edgesam-dyt/web_demo/
 
-PYTHONPATH=/home/ubuntu/edgesam-dyt/ python gradio_app.py --checkpoint "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth" --server-name=0.0.0.0 --port=7680
+PYTHONPATH=/home/ubuntu/edgesam-dyt/ python gradio_app.py --checkpoint "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth" --server-name=127.0.0.1 --port=7680
 ```
 adding `--hq` will switch to edgesam-dyt-hq model
+```
+PYTHONPATH=/home/ubuntu/edgesam-dyt/ python gradio_app.py --checkpoint "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_hq_fuse_enc_dec/default/ckpt_epoch_40.pth" --server-name=127.0.0.1 --port=7680 --hq
+```
 
 ## Usage
 See `notebooks/predictor_example.ipynb`
@@ -71,6 +87,8 @@ sam.to(device=device)
 
 predictor = SamPredictor(sam)
 ```
+If using the HQ version use `model_type = "edge_sam_dyt_hq"` and use the appropriate checkpoint.
+See `notebooks/predictor_example.ipynb`
 
 ## ONNX
 We update ONNX models to support both point and box prompts simulatenously.
@@ -102,6 +120,15 @@ masks, scores, logits = predictor.predict(
 # mask shape (1, 4, H, W)
 ```
 
+To support the HQ version we must expose the intermediate layers from the image encoder and provide new inputs for those layers in the mask decoder. 
+For this `--hq` is appended to the onnx conversion command to indicate that new inputs/outputs are needed:
+```
+"interm_embeddings_0"
+"interm_embeddings_1"
+"interm_embeddings_2"
+```
+See the modification for the [encoder](./scripts/export_onnx_model.py#L75) and the [decoder](./scripts/export_onnx_model.py#L136)
+
 ## Conversion to TensorRT
 ```
 trtexec --onnx=ckpt_epoch_39_encoder.onnx --fp16 --saveEngine=ckpt_epoch_39_encoder_fp16.trt --useCudaGraph
@@ -119,7 +146,7 @@ NOTE: Demo will follow soon...
 - [ ] Batchwise bounding box ONNX support
 - [ ] Finetuning on smaller datasets
 - [ ] Self prompting (Freeze Image Encoder/ Mask decoder - finetune prompt encoder for specific task)
-- [ ] Integration with [HQ-SAM](https://github.com/SysCV/sam-hq) for refined masks
+- [x] Integration with [HQ-SAM](https://github.com/SysCV/sam-hq) for refined masks
 
 ## Citations
 If this work helped you:
