@@ -12,7 +12,6 @@ from typing import Any, Optional, Tuple, Type
 
 from .common import LayerNorm2d
 
-
 class PromptEncoder(nn.Module):
     def __init__(
         self,
@@ -89,6 +88,7 @@ class PromptEncoder(nn.Module):
         point_embedding[labels == 0] += self.point_embeddings[0].weight
         point_embedding[labels == 1] += self.point_embeddings[1].weight
         point_embedding[labels == -2] = torch.zeros_like(self.not_a_point_embed.weight, dtype=point_embedding.dtype)
+
         return point_embedding
 
     def _embed_boxes(self, boxes: torch.Tensor) -> torch.Tensor:

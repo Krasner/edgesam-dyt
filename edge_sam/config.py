@@ -63,6 +63,8 @@ _C.MODEL.PRETRAINED = ''
 _C.MODEL.RESUME = ''
 # Number of classes, overwritten in data preparation
 _C.MODEL.NUM_CLASSES = 1000
+# Enable HQ token for mask decoder
+_C.MODEL.MASK_HQ = False
 
 # DISTILL
 _C.DISTILL = CN()
@@ -169,6 +171,8 @@ _C.TRAIN.USE_CHECKPOINT = False
 _C.TRAIN.LAYER_LR_DECAY = 1.0
 # batch norm is in evaluation mode when training
 _C.TRAIN.EVAL_BN_WHEN_TRAINING = False
+# should DISTILLATION be used
+_C.TRAIN.ENABLE_DISTILL = True
 
 # LR scheduler
 _C.TRAIN.LR_SCHEDULER = CN()

@@ -249,7 +249,7 @@ class Attention(nn.Module):
         _, _, _, c_per_head = q.shape
         attn = q @ k.permute(0, 1, 3, 2)  # B x N_heads x N_tokens x N_tokens
         attn = attn / math.sqrt(c_per_head)
-        attn = torch.softmax(attn, dim=-1)
+        attn = torch.softmax(attn.float(), dim=-1).to(q.dtype)
 
         if kd_targets is not None:
             kd_targets[target_name] = attn

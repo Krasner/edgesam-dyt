@@ -343,6 +343,8 @@ class RepViT(nn.Module):
         upsample_mode='bicubic',
         gelu_approx='none',
         dyt=False,
+        return_low_feats=False,
+        feature_names = ['stem', 'stage0']
     ):
         super(RepViT, self).__init__()
         # setting of inverted residual blocks
@@ -354,6 +356,8 @@ class RepViT(nn.Module):
         self.out_indices = out_indices
         self.gelu_approx = gelu_approx
         self.dyt = dyt
+        self.return_low_feats = return_low_feats
+        self.feature_names = feature_names
 
         # building first layer
         input_channel = self.cfgs[0][2]
@@ -431,6 +435,7 @@ class RepViT(nn.Module):
         output_dict = dict()
         # patch_embed
         x = self.features[0](x)
+        # expect torch.Size([1, 48, 256, 256])
         output_dict['stem'] = x
         # stages
         for idx, f in enumerate(self.features[1:]):
@@ -453,6 +458,11 @@ class RepViT(nn.Module):
                 if i in self.out_indices:
                     out.append(output_dict[key])
             return tuple(out)
+        
+        if self.return_low_feats:
+            feats =  tuple([output_dict[n] for n in self.feature_names])
+            return x, feats # output_dict['stem']
+            
         return x
 
 
@@ -469,3 +479,6 @@ def rep_vit_m3(img_size=1024, **kwargs):
 
 def rep_vit_m1_dyt(img_size=1024, **kwargs):
     return RepViT('m1', img_size, dyt=True, gelu_approx='tanh', **kwargs)
+
+# def rep_vit_m1_dyt_hq(img_size=1024, **kwargs):
+#     return RepViT('m1', img_size, dyt=True, gelu_approx='tanh', return_low_feats=True, **kwargs)
