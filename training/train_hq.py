@@ -234,12 +234,12 @@ def main(args, config, train_datasets, valid_datasets):
         if hasattr(layer,'bias'):
             layer.bias = teacher_model.mask_decoder.hf_mlp.layers[i].bias
     '''
-    breakpoint()
+    # breakpoint()
     # hf_token, hf_mlp, compress_vit_feat, embedding_encoder, embedding_maskfeature
     for name, param in model_without_ddp.mask_decoder.named_parameters():
         if (
-            # 'hf_token' in name or
-            'hf_mlp' in name
+            'hf_token' in name
+            or 'hf_mlp' in name
             or 'compress_vit_feat' in name
             or 'embedding_encoder' in name
             or 'embedding_maskfeature' in name

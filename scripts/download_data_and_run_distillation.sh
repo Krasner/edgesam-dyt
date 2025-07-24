@@ -51,7 +51,15 @@ CUDA_VISIBLE_DEVICES=0 PYTHONPATH="/home/ubuntu/edgesam-dyt/" python -m torch.di
 PYTHONPATH="/home/ubuntu/edgesam-dyt/" python scripts/export_onnx_model.py "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth" --simplify
 PYTHONPATH="/home/ubuntu/edgesam-dyt/" python scripts/export_onnx_model.py "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth" --decoder --simplify --upsample
 
-# STEP 4: Train HQ version
+# STEP 4: jointly finetune encoder + mask decoder
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH="/home/ubuntu/edgesam-dyt/" python -m torch.distributed.launch --master_port 29501 --nproc_per_node 1 training/train.py --cfg training/configs/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill_joint.yaml --output ./output/ --batch-size 16
+
+# export onnx
+PYTHONPATH="/home/ubuntu/edgesam-dyt/" python scripts/export_onnx_model.py "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill_joint/default/ckpt_epoch_19.pth" --simplify
+PYTHONPATH="/home/ubuntu/edgesam-dyt/" python scripts/export_onnx_model.py "/home/ubuntu/edgesam-dyt/output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill_joint/default/ckpt_epoch_19.pth" --decoder --simplify --upsample
+
+
+# STEP 5: Train HQ version
 cd ./weights
 # sam_hq_vit_h.pth from sam-hq repo
 gdown 1qobFYrI4eyIANfBSmYcGuWRaSIXfMOQ8

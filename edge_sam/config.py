@@ -123,6 +123,8 @@ _C.DISTILL.POINT_REND_SAMPLING = False
 _C.DISTILL.USE_TEACHER_LOGITS = False
 # Initialize the weights of the prompt encoder and mask decoder of the student from teacher.
 _C.DISTILL.INIT_FROM_TEACHER = True
+# Confirm initializing mask decoder from teacher. If False defer to student checkpoint
+_C.DISTILL.INIT_MASK_FROM_TEACHER = True
 # Temperature for mask prediction (prior to sigmoid).
 _C.DISTILL.TEMPERATURE = 1.0
 # Convert prompt box to prompt point (center point)

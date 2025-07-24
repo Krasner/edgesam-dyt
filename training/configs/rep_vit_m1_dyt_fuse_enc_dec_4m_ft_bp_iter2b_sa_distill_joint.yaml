@@ -1,0 +1,45 @@
+MODEL:
+  TYPE: rep_vit_m1_dyt
+  PRETRAINED: output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth
+
+TRAIN:
+  EPOCHS: 20
+  BASE_LR: 3.2e-3
+  MIN_LR: 3.2e-4
+  WARMUP_LR: 3.2e-5
+  WARMUP_EPOCHS: 1
+  WEIGHT_DECAY: 0.05
+  CLIP_GRAD: 0.01
+
+DATA:
+  IMG_SIZE: 1024
+  MEAN_AND_STD_TYPE: default
+  DATASET: sa1b
+  DATA_PATH: datasets/SA-1B/
+  NUM_WORKERS: 16
+  BATCH_SIZE: 16
+
+DISTILL:
+  EMBED_DIM: 256
+  TEACHER_EMBED_PATH: teacher_embed/sa-1b/
+  NO_RAND: True
+  FUSE: True
+  ENCODER_ONLY: False
+  IMAGE_ENCODER_DYT: False
+  FREEZE_IMAGE_ENCODER: False
+  DECODER_BCE: 5.0
+  DECODER_DICE: 5.0
+  MAX_ALLOWED_PROMPTS: 16
+  PROMPT_TYPE: ['box', 'point']
+  DECODE_ITERS: 2
+  POINTS_PER_REFINE_ITER: 1
+  ITER_ON_BOX: True
+  MULTIMASK_OUTPUT: 4
+  MASK_DYT: True
+  GELU_APPROX: tanh
+  FREEZE_MASK_DECODER: False
+  ONLY_TUNE_MASK_DECODER_DYT: False
+  FREEZE_PROMPT_ENCODER: True
+  INIT_MASK_FROM_TEACHER: False
+
+AMP_ENABLE: True
