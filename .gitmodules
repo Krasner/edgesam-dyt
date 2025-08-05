@@ -1,3 +1,9 @@
-[submodule "mmdetection"]
-	path = mmdetection
+[submodule "submodules/mmcv"]
+	path = submodules/mmcv
+	url = https://github.com/open-mmlab/mmcv.git
+[submodule "submodules/mmdetection"]
+	path = submodules/mmdetection
 	url = https://github.com/open-mmlab/mmdetection.git
+[submodule "submodules/mmengine"]
+	path = submodules/mmengine
+	url = https://github.com/open-mmlab/mmengine.git
