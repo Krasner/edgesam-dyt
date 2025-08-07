@@ -119,10 +119,15 @@ class SamPredictorONNX:
         return x
 
     def postprocess_masks(self, mask: np.ndarray):
-        mask = mask.squeeze(0).transpose(1, 2, 0)
+        mask = mask.squeeze(0).transpose(1, 2, 0) # (h, w, c)
+        _c = mask.shape[-1]
         mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+        if _c == 1:
+            mask = mask[..., np.newaxis]
         mask = mask[:self.input_size[0], :self.input_size[1], :]
         mask = cv2.resize(mask, (self.original_size[1], self.original_size[0]), interpolation=cv2.INTER_LINEAR)
+        if _c == 1:
+            mask = mask[..., np.newaxis]
         mask = mask.transpose(2, 0, 1)[None, :, :, :]
         return mask
 

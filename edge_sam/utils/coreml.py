@@ -194,7 +194,7 @@ class SamCoreMLModelHQ(SamCoreMLModel):
             self.model.mask_decoder.embedding_encoder(image_embeddings) + 
             sum([self.model.mask_decoder.compress_vit_feat[i](int_emb) for i, int_emb in enumerate(interm_embeddings)])
         )
-
+        # breakpoint()
         masks, scores = self.model.mask_decoder.predict_masks(
             image_embeddings=image_embeddings,
             image_pe=self.model.prompt_encoder.get_dense_pe(),
@@ -202,6 +202,10 @@ class SamCoreMLModelHQ(SamCoreMLModel):
             dense_prompt_embeddings=dense_embedding,
             hq_features = hq_features,
         )
+
+        # take only last mask
+        masks = masks[:,-1:]
+        scores = scores[:,-1:]
 
         if self.use_stability_score:
             scores = calculate_stability_score(

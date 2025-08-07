@@ -344,7 +344,7 @@ class RepViT(nn.Module):
         gelu_approx='none',
         dyt=False,
         return_low_feats=False,
-        feature_names = ['stem', 'stage0']
+        feature_names = ['stem','stage0','stage1'],
     ):
         super(RepViT, self).__init__()
         # setting of inverted residual blocks

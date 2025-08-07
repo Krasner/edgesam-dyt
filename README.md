@@ -1,7 +1,12 @@
 # EdgeSAM-DyT
 Say no to layernorms - combines [EdgeSAM](https://github.com/chongzhou96/EdgeSAM) with [Dynamic Tanh](https://github.com/jiachenzhu/DyT)
 
-LayerNormalization presents a problem when quantizing due to its sensitivity to numerical accuracy. We replace layernorms in the image encoder and mask decoder with dynamic tanh (DyT) layers. This requires retraining via knowledge distillation of the image encoder (based on RepViT) and the mask decoder - here we present a 3 step distillation curriculum.
+LayerNormalization presents a problem when quantizing due to its sensitivity to numerical accuracy. We replace layernorms in the image encoder and mask decoder with dynamic tanh (DyT) layers. This requires retraining via knowledge distillation of the image encoder (based on RepViT) and the mask decoder - here we present a 4 step distillation curriculum.
+
+Step 1: Distill only image encoder against ViT-H \
+Step 2: Distill image encoder with frozen SAM Mask decoder (as done in EdgeSAM paper) \
+Step 3: Freeze image encoder, distill DyT mask decoder \
+Step 4: Distill full model (image encoder + DyT mask decoder)
 
 The goal is to create a fast and accurate general segmentation model for edge devices leveraging SAM. We encourage contributions to this effort.
 
@@ -25,9 +30,11 @@ STEP 1: [PyTorch](https://drive.google.com/file/d/14zMPCbdInahfwNS8rHIMdpY2m7szV
 
 STEP 2: [PyTorch](https://drive.google.com/file/d/1lsd2TsfYMgBN3NJGxGVs-HEu2DANaJQz/view?usp=drive_link) 
 
-STEP 3 (Final Base Model): [PyTorch](https://drive.google.com/file/d/1YFBE939hOeraelSXm4lEYzoOLR-WQRtS/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/12jHKCPMymUqdQvh8BbSEcPcC3hYgxGS3/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1SSovZSC95RcboqI7HQtmwXTFG3i_L4RV/view?usp=drive_link)
+STEP 3 (Base Model): [PyTorch](https://drive.google.com/file/d/1YFBE939hOeraelSXm4lEYzoOLR-WQRtS/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/12jHKCPMymUqdQvh8BbSEcPcC3hYgxGS3/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1SSovZSC95RcboqI7HQtmwXTFG3i_L4RV/view?usp=drive_link)
 
-STEP 4 (OPTIONAL HQ Model): [PyTorch](https://drive.google.com/file/d/1RDYV3nQex9owmp28mxvg1d9yaQ-e1cJK/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/14twlBMSn-XH6hCP6GJHYLoDwAW3okV5O/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1LxUCxf8NwLgsXc93KA2jB_BtmniOjhgV/view?usp=drive_link)
+STEP 4 (Final Base Model): [PyTorch](https://drive.google.com/file/d/10cTazWMI2tq0LMXkFog-TdHqn1zFNS2s/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/1cXbkGiFiyjHoH33oAgLAbyXgBGPeOnVY/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/16gnNHEptpid8eNuVVRA9yuP6gOvo5ocn/view?usp=drive_link)
+
+STEP 5 (OPTIONAL HQ Model): [PyTorch](https://drive.google.com/file/d/1pYztXLdoBMpUd41No3wdBXSUPtidpKke/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/1fmX1H480wX1MIIAwPyAM5gW4GtMMW9nu/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1gJbuOPMjO0YL8BZSw8QbpGEGZJ2sx4FN/view?usp=drive_link)
 
 ## Reproducibility
 We provide the full script in `scripts/download_data_and_run_distillation.sh`

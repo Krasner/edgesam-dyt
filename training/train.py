@@ -171,6 +171,7 @@ def main(args, config):
                 logger.info(f"=> loaded successfully 'prompt_encoder'")
                 del prompt_encoder_weights
 
+            if config.DISTILL.INIT_FROM_TEACHER and config.DISTILL.INIT_MASK_FROM_TEACHER:
                 mask_decoder_weights = torch.load('weights/sam_vit_h_mask_decoder.pth', map_location='cpu')
                 
                 new_state_dict = {}
@@ -183,6 +184,9 @@ def main(args, config):
                 logger.info(f"=> loaded successfully 'mask_decoder'")
                 del mask_decoder_weights
                 torch.cuda.empty_cache()
+            else:
+                logger.info(f"=> Initializing mask decoder from checkpoint")
+                load_pretrained(config, model_without_ddp.mask_decoder, logger, stage="mask_decoder")
 
             if config.DISTILL.FREEZE_IMAGE_ENCODER:
                 for param in model_without_ddp.image_encoder.parameters():
