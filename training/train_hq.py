@@ -215,13 +215,12 @@ def main(args, config, train_datasets, valid_datasets):
     model_without_ddp.mask_decoder.hf_token.weight = teacher_model.mask_decoder.hf_token.weight
     
     # MANUALLY copy over other matching weights and biases
-    '''
     for i, layer in enumerate(model_without_ddp.mask_decoder.embedding_encoder):
         if hasattr(layer,'weight'):
             layer.weight = teacher_model.mask_decoder.embedding_encoder[i].weight
         if hasattr(layer,'bias'):
             layer.bias = teacher_model.mask_decoder.embedding_encoder[i].bias
-
+    '''
     for i, layer in enumerate(model_without_ddp.mask_decoder.embedding_maskfeature):
         if hasattr(layer,'weight'):
             layer.weight = teacher_model.mask_decoder.embedding_maskfeature[i].weight
@@ -238,8 +237,8 @@ def main(args, config, train_datasets, valid_datasets):
     # hf_token, hf_mlp, compress_vit_feat, embedding_encoder, embedding_maskfeature
     for name, param in model_without_ddp.mask_decoder.named_parameters():
         if (
-            'hf_token' in name
-            or 'hf_mlp' in name
+            # 'hf_token' in name
+            'hf_mlp' in name
             or 'compress_vit_feat' in name
             or 'embedding_encoder' in name
             or 'embedding_maskfeature' in name
@@ -346,7 +345,7 @@ def train_step(args, config, model, optimizer, train_dataloaders, valid_dataload
         # except:
             # less than 10 points
         #     input_keys = ['box'] # ,'noise_mask']
-        labels_256 = F.interpolate(labels, size=(256, 256), mode='bilinear')
+        labels_256 = F.interpolate(labels, size=(256, 256), mode='nearest')
         labels_noisemask = misc.masks_noise(labels_256)
 
         batched_input = []
@@ -417,7 +416,7 @@ def train_step(args, config, model, optimizer, train_dataloaders, valid_dataload
             #     raise NotImplementedError
             dict_input['original_size'] = imgs[b_i].shape[:2]
             batched_input.append(dict_input)
-            keep_labels.append(labels[b_i:b_i+1])
+            keep_labels.append(labels_256[b_i:b_i+1])
 
         if len(keep_labels) == 0:
             print("All prompts were invalid... skipping")
@@ -437,6 +436,7 @@ def train_step(args, config, model, optimizer, train_dataloaders, valid_dataload
                 masks_s = torch.stack([m for i, m in enumerate(masks_hq) if valid[i]], 0)
                 
             _labels = torch.stack([l/255.0 for i, l in enumerate(keep_labels) if valid[i]], 0)
+            # breakpoint()
             # loss_mask, loss_dice = loss_masks(masks_hq, labels/255.0, len(masks_hq))
             loss_mask, loss_dice = loss_masks(masks_s.float(), _labels.float(), len(masks_s))
             
@@ -454,13 +454,14 @@ def train_step(args, config, model, optimizer, train_dataloaders, valid_dataload
             distill_loss_dice = 0.0
             if config.TRAIN.ENABLE_DISTILL:
                 # distillation from teacher
-                with torch.no_grad(), torch.amp.autocast('cuda', dtype=torch.float16, enabled=config.AMP_ENABLE):
-                    teacher_outs = teacher_model(batched_input, num_multimask_outputs=1)
+                with torch.no_grad():
+                    teacher_outs = teacher_model(batched_input, num_multimask_outputs=1, training_mode=False)
                     masks_t = torch.concat([o['low_res_logits'] for i, o in enumerate(teacher_outs) if valid[i]], 0)
-
+                
+                # breakpoint()
                 if config.DISTILL.DECODER_BCE > 0 or config.DISTILL.DECODER_FOCAL > 0 or config.DISTILL.DECODER_DICE > 0:
                     _mask_s = masks_s.float()
-                    _mask_t = masks_t.float()
+                    _mask_t = masks_t
 
                     temperature = config.DISTILL.TEMPERATURE
                     _mask_s = _mask_s / temperature

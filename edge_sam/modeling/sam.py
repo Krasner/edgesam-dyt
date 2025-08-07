@@ -247,9 +247,26 @@ class Sam(nn.Module):
                 else:
                     image_embeddings = image_encoder_outs
 
+        sparse_embeddings = []
+        dense_embeddings = []
+        with torch.no_grad():
+            for image_record in batched_input:
+                if "point_coords" in image_record:
+                    points = (image_record["point_coords"], image_record["point_labels"])
+                else:
+                    points = None
+                se, de = self.prompt_encoder(
+                    points=points,
+                    boxes=image_record.get("boxes", None),
+                    masks=image_record.get("mask_inputs", None),
+                )
+                sparse_embeddings.append(se)
+                dense_embeddings.append(de)
+
         with torch.set_grad_enabled(training_mode):
             outputs = []
             for i, (image_record, curr_embedding) in enumerate(zip(batched_input, image_embeddings)):
+                """
                 if "point_coords" in image_record:
                     points = (image_record["point_coords"], image_record["point_labels"])
                 else:
@@ -264,18 +281,18 @@ class Sam(nn.Module):
 
                 if torch.any(torch.isnan(dense_embeddings)):
                     breakpoint()
-
+                """
                 if interm_embeddings is not None:
                     curr_interm = [interm[i].unsqueeze(0) for interm in interm_embeddings]
                 else:
                     curr_interm = None
-
+                # breakpoint()
                 # low_res_masks, iou_predictions 
                 mask_outs = self.mask_decoder(
                     image_embeddings=curr_embedding.unsqueeze(0),
                     image_pe=self.prompt_encoder.get_dense_pe(),
-                    sparse_prompt_embeddings=sparse_embeddings,
-                    dense_prompt_embeddings=dense_embeddings,
+                    sparse_prompt_embeddings=sparse_embeddings[i],
+                    dense_prompt_embeddings=dense_embeddings[i],
                     num_multimask_outputs=num_multimask_outputs,
                     interm_embeddings=curr_interm,
                     hq_token_only=True,

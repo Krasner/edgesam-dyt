@@ -1,17 +1,18 @@
 MODEL:
   TYPE: rep_vit_m1_dyt
   # PRETRAINED: output/rep_vit_m1_dyt_fuse_sa_distill/default/ckpt_epoch_19.pth
-  PRETRAINED: output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth
+  # PRETRAINED: output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth
+  PRETRAINED: output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill_joint/default/ckpt_epoch_19.pth
   MASK_HQ: True
 
 TRAIN:
-  EPOCHS: 48
+  EPOCHS: 40
   BASE_LR: 3.2e-4
   MIN_LR: 3.2e-5
   WARMUP_LR: 3.2e-6
-  WARMUP_EPOCHS: 8
+  WARMUP_EPOCHS: 2
   WEIGHT_DECAY: 0.05
-  CLIP_GRAD: 0.01
+  CLIP_GRAD: 0.005
   EVAL_BN_WHEN_TRAINING: True
   ENABLE_DISTILL: True
 
@@ -33,7 +34,7 @@ DISTILL:
   MASK_DYT: True
   DECODER_BCE: 1.0
   DECODER_DICE: 1.0
-  USE_TEACHER_LOGITS: True
+  USE_TEACHER_LOGITS: False
   TEMPERATURE: 4.0
   # MAX_ALLOWED_PROMPTS: 16
   PROMPT_TYPE: ['box', 'point']
@@ -41,4 +42,4 @@ DISTILL:
   POINTS_PER_REFINE_ITER: 1
   ITER_ON_BOX: True
 
-AMP_ENABLE: False
+AMP_ENABLE: True

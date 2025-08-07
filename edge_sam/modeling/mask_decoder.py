@@ -398,7 +398,7 @@ class MaskDecoderHQ(MaskDecoder):
         masks_sam = masks[:,mask_slice]
         iou_preds = iou_preds[:, mask_slice]
 
-        masks_hq = masks[:,slice(self.num_mask_tokens-1, self.num_mask_tokens), :, :]
+        masks_hq = masks[:,slice(self.num_mask_tokens-1, self.num_mask_tokens)]
         
         # if hq_token_only:
         #     return masks_hq, iou_preds

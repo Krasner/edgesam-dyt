@@ -68,7 +68,7 @@ def export_encoder_to_onnx(sam, args):
         sam.forward = sam.forward_dummy_encoder
 
     traced_model = torch.jit.trace(sam, image_input, strict=False)
-    breakpoint()
+
     # Define the input names and output names
     input_names = ["image"]
     output_names = ["image_embeddings"]
