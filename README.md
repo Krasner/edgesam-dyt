@@ -8,11 +8,22 @@ Step 2: Distill image encoder with frozen SAM Mask decoder (as done in EdgeSAM p
 Step 3: Freeze image encoder, distill DyT mask decoder \
 Step 4: Distill full model (image encoder + DyT mask decoder)
 
+Optional Step 5:
+Extend model for HQ segmentation leveraging ideas in HQ-SAM, namely exposing intermediate layers from the image encoder and adding fusion layers in the mask decoder.
+
 The goal is to create a fast and accurate general segmentation model for edge devices leveraging SAM. We encourage contributions to this effort.
 
 This codebase adapts the code in the EdgeSAM repo.
 
 ## Updates
+__2025-08-25__
+We find that the ONNX results _do not match_ the pytorch results. We fix this problem by extensively checking intermediate tensor values and restructuring various layers in the encoder and decoder (more problematic) into onnx-friendly operations. We also fix `_embed_points` in coreml.py that did not apply a padding token when no boxes are present/valid.
+
+We update the ONNX encoder/decoder checkpoints for STEP 4 and 5 (HQ).
+See `notebooks/predictor_example_onnx_compare.ipynb` for a more detailed comparison - we feed the image_embeddings (and interm_embeddings) to the pytorch prompt encoder/mask decoder which will produce correct results, but if the ONNX decoder is incorrectly converted, it will not match the pytorch results.
+
+Merging to main will require some work... (for now look at branch `dev/onnx`)
+
 __2025-07-12__
 
 We attempt to improve segmentation results with an **HQ** version of the model. Using the [datasets](https://huggingface.co/sam-hq-team/sam-hq-training/tree/main/data) listed in [sam-hq](https://github.com/SysCV/sam-hq) we distill the ViT-H HQ-SAM checkpoint.
@@ -32,9 +43,9 @@ STEP 2: [PyTorch](https://drive.google.com/file/d/1lsd2TsfYMgBN3NJGxGVs-HEu2DANa
 
 STEP 3 (Base Model): [PyTorch](https://drive.google.com/file/d/1YFBE939hOeraelSXm4lEYzoOLR-WQRtS/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/12jHKCPMymUqdQvh8BbSEcPcC3hYgxGS3/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1SSovZSC95RcboqI7HQtmwXTFG3i_L4RV/view?usp=drive_link)
 
-STEP 4 (Final Base Model): [PyTorch](https://drive.google.com/file/d/10cTazWMI2tq0LMXkFog-TdHqn1zFNS2s/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/1cXbkGiFiyjHoH33oAgLAbyXgBGPeOnVY/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/16gnNHEptpid8eNuVVRA9yuP6gOvo5ocn/view?usp=drive_link)
+STEP 4 (Final Base Model): [PyTorch](https://drive.google.com/file/d/10cTazWMI2tq0LMXkFog-TdHqn1zFNS2s/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/1dYWCK8bJCFpP0vbOSOzH32ja_wBD4OKr/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1MlcB9-c68CRE_Tb9NcSLWn529Hvt2Elp/view?usp=drive_link)
 
-STEP 5 (OPTIONAL HQ Model): [PyTorch](https://drive.google.com/file/d/1pYztXLdoBMpUd41No3wdBXSUPtidpKke/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/1fmX1H480wX1MIIAwPyAM5gW4GtMMW9nu/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1gJbuOPMjO0YL8BZSw8QbpGEGZJ2sx4FN/view?usp=drive_link)
+STEP 5 (OPTIONAL HQ Model): [PyTorch](https://drive.google.com/file/d/1pYztXLdoBMpUd41No3wdBXSUPtidpKke/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/1IGp20ODhWv0-g-tbYJj4-Yvmuj_7SkXl/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1DY7mJfVrfNYb82jAAOlbog012F_7JqKM/view?usp=drive_link)
 
 ## Reproducibility
 We provide the full script in `scripts/download_data_and_run_distillation.sh`
@@ -222,4 +233,9 @@ Also cite all of these:
     booktitle={NeurIPS},
     year={2023}
 } 
+```
+
+## Contact
+```
+aakrasner@gmail.com
 ```
