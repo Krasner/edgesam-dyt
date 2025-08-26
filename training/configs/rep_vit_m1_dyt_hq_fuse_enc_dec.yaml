@@ -6,7 +6,7 @@ MODEL:
   MASK_HQ: True
 
 TRAIN:
-  EPOCHS: 40
+  EPOCHS: 20
   BASE_LR: 3.2e-4
   MIN_LR: 3.2e-5
   WARMUP_LR: 3.2e-6

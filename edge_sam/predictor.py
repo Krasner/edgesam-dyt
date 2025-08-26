@@ -158,7 +158,7 @@ class SamPredictor:
             mask_input_torch = torch.as_tensor(mask_input, dtype=torch.float, device=self.device)
             mask_input_torch = mask_input_torch[None, :, :, :]
 
-        masks, masks_sam, iou_predictions, low_res_masks, low_res_masks_sam = self.predict_torch(
+        masks, masks_sam, iou_predictions, low_res_masks, low_res_masks_sam, hq_features, sparse_embs, dense_embs = self.predict_torch(
             features,
             coords_torch,
             labels_torch,
@@ -172,13 +172,25 @@ class SamPredictor:
         masks_np = masks[0].detach().cpu().numpy()
         iou_predictions_np = iou_predictions[0].detach().cpu().numpy()
         low_res_masks_np = low_res_masks[0].detach().cpu().numpy()
+        hq_features_np = hq_features[0].detach().cpu().numpy()
+        sparse_embs_np = sparse_embs[0].detach().cpu().numpy()
+        dense_embs_np = dense_embs[0].detach().cpu().numpy()
         if low_res_masks_sam is not None:
           masks_sam_np = masks_sam[0].detach().cpu().numpy()
           low_res_masks_sam_np = low_res_masks_sam[0].detach().cpu().numpy()
         else:
           masks_sam_np = None
           low_res_masks_sam_np = None
-        return masks_np, iou_predictions_np, low_res_masks_np, masks_sam_np, low_res_masks_sam_np
+        return (
+            masks_np, 
+            iou_predictions_np, 
+            low_res_masks_np, 
+            masks_sam_np, 
+            low_res_masks_sam_np, 
+            hq_features_np,
+            sparse_embs_np,
+            dense_embs_np,
+        )
 
     @torch.no_grad()
     def predict_torch(
@@ -248,6 +260,8 @@ class SamPredictor:
             masks=mask_input,
         )
 
+        print(f"{sparse_embeddings.shape=}")
+
         # Predict masks
         # low_res_masks, iou_predictions 
         mask_outs = self.model.mask_decoder(
@@ -256,8 +270,13 @@ class SamPredictor:
             sparse_prompt_embeddings=sparse_embeddings,
             dense_prompt_embeddings=dense_embeddings,
             num_multimask_outputs=num_multimask_outputs,
-            interm_embeddings=interm
+            interm_embeddings=interm,
+            return_hq_features = True, # true for validation
         )
+
+        # if hq_features returned
+        hq_features = mask_outs[-1]
+        mask_outs = mask_outs[:-1]
 
         if len(mask_outs) == 2:
             # standard version
@@ -285,7 +304,7 @@ class SamPredictor:
             if masks_sam is not None:
               masks_sam = masks_sam > self.model.mask_threshold
 
-        return masks, masks_sam, iou_predictions, low_res_masks, low_res_masks_sam
+        return masks, masks_sam, iou_predictions, low_res_masks, low_res_masks_sam, hq_features, sparse_embeddings, dense_embeddings
 
     def get_image_embedding(self) -> torch.Tensor:
         """

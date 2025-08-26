@@ -120,6 +120,7 @@ class Sam(nn.Module):
 
     @torch.no_grad()
     def forward_dummy_encoder_hq(self, x):
+        self.image_encoder.eval()
         image_encoder_outs = self.image_encoder(x)
         outs = tuple([
             image_encoder_outs[0], 
@@ -131,6 +132,7 @@ class Sam(nn.Module):
     # For FLOPs, params count, and speed test
     @torch.no_grad()
     def forward_dummy_encoder(self, x):
+        self.image_encoder.eval()
         image_encoder_outs = self.image_encoder(x)
         # if not isinstance(image_encoder_outs, tuple):
         #     outs = (image_encoder_outs,)

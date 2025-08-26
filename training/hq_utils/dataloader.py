@@ -99,6 +99,35 @@ class RandomHFlip(object):
             label = torch.flip(label,dims=[2])
 
         return {'imidx':imidx,'image':image, 'label':label, 'shape':shape}
+    
+class RandomVFlip(object):
+    def __init__(self,prob=0.5):
+        self.prob = prob
+    def __call__(self,sample):
+        imidx, image, label, shape =  sample['imidx'], sample['image'], sample['label'], sample['shape']
+
+        # random horizontal flip
+        if random.random() >= self.prob:
+            image = torch.flip(image,dims=[1])
+            label = torch.flip(label,dims=[1])
+
+        return {'imidx':imidx,'image':image, 'label':label, 'shape':shape}
+    
+class RandomRot(object):
+    def __init__(self,prob=0.5):
+        self.prob = prob
+    def __call__(self,sample):
+        imidx, image, label, shape =  sample['imidx'], sample['image'], sample['label'], sample['shape']
+        # print(f"{shape=}")
+        # random horizontal flip
+        if random.random() >= self.prob:
+            k = random.randint(1, 3)
+            if k % 2 == 1:
+                shape = torch.tensor([shape[1], shape[0]])
+            image = torch.rot90(image, k, dims=[1,2])
+            label = torch.rot90(label, k, dims=[1,2])
+
+        return {'imidx':imidx,'image':image, 'label':label, 'shape':shape}
 
 class Resize(object):
     def __init__(self,size=[320,320]):

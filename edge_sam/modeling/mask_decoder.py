@@ -10,7 +10,7 @@ from torch.nn import functional as F
 
 from typing import List, Tuple, Type, Optional
 
-from .common import LayerNorm2d, DynamicTanh
+from .common import LayerNorm2d, DynamicTanh, ApproxGeLU
 
 
 class MaskDecoder(nn.Module):
@@ -46,6 +46,10 @@ class MaskDecoder(nn.Module):
           gelu_approx (str): 'none' or 'tanh'
         """
         super().__init__()
+
+        if gelu_approx == "tanh":
+            activation = ApproxGeLU
+
         self.yield_kd_targets = yield_kd_targets
         self.transformer_dim = transformer_dim
         self.transformer = transformer
@@ -175,7 +179,7 @@ class MaskDecoder(nn.Module):
         mask_tokens_out = hs[:, 1 : (1 + self.num_mask_tokens), :]
 
         # Upscale mask embeddings and predict masks using the mask tokens
-        src = src.transpose(1, 2).view(b, c, h, w)
+        src = src.transpose(1, 2).reshape(b, c, h, w)
         upscaled_embedding = self.output_upscaling(src)
         hyper_in_list: List[torch.Tensor] = []
         for i in range(self.num_mask_tokens):
@@ -183,7 +187,7 @@ class MaskDecoder(nn.Module):
         hyper_in = torch.stack(hyper_in_list, dim=1)
 
         b, c, h, w = upscaled_embedding.shape
-        masks = (hyper_in @ upscaled_embedding.view(b, c, h * w)).view(b, -1, h, w)
+        masks = (hyper_in @ upscaled_embedding.reshape(b, c, h * w)).reshape(b, -1, h, w)
 
         # Generate mask quality predictions
         iou_pred = self.iou_prediction_head(iou_token_out)
@@ -212,12 +216,15 @@ class MLP(nn.Module):
             nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])
         )
         self.sigmoid_output = sigmoid_output
+        self.relu = torch.nn.ReLU()
+        self.last_act = nn.Sigmoid() if sigmoid_output else nn.Identity()
 
     def forward(self, x):
         for i, layer in enumerate(self.layers):
-            x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
-        if self.sigmoid_output:
-            x = F.sigmoid(x)
+            x = self.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+        # if self.sigmoid_output:
+        #     x = F.sigmoid(x)
+        x = self.last_act(x)
         return x
 
 class MaskDecoderHQ(MaskDecoder):
@@ -256,6 +263,9 @@ class MaskDecoderHQ(MaskDecoder):
         self.hf_token = nn.Embedding(1, transformer_dim)
         self.hf_mlp = MLP(transformer_dim, transformer_dim, transformer_dim // 8, 3)
         self.num_mask_tokens = self.num_mask_tokens + 1
+
+        if gelu_approx == "tanh":
+            activation = ApproxGeLU
 
         if dyt:
             self.compress_vit_feat = nn.ModuleList([
@@ -319,6 +329,7 @@ class MaskDecoderHQ(MaskDecoder):
         # multimask_output: bool,
         hq_token_only: bool = True,
         interm_embeddings: Optional[List[torch.Tensor]] = None,
+        return_hq_features: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Predict masks given image and prompt embeddings.
@@ -394,17 +405,25 @@ class MaskDecoderHQ(MaskDecoder):
         #     masks_sam = masks_multi[torch.arange(masks_multi.size(0)),max_iou_idx].unsqueeze(1)
         # else:
         # single mask output, default
+        '''
         mask_slice = slice(0, 1)
         masks_sam = masks[:,mask_slice]
         iou_preds = iou_preds[:, mask_slice]
-
         masks_hq = masks[:,slice(self.num_mask_tokens-1, self.num_mask_tokens)]
-        
+        '''
+        # mask_slice = slice(0, 1)
+        masks_sam = masks[:,0:1]
+        iou_preds = iou_preds[:, 0:1]
+        masks_hq = masks[:,self.num_mask_tokens-1:self.num_mask_tokens]
         # if hq_token_only:
         #     return masks_hq, iou_preds
         # else:
         #     # raise NotImplementedError
-        return masks_hq, masks_sam, iou_preds
+        ret = [masks_hq, masks_sam, iou_preds]
+        if return_hq_features:
+            ret.append(hq_features)
+
+        return ret
     """
     def predict_masks(
         self,
@@ -473,36 +492,66 @@ class MaskDecoderHQ(MaskDecoder):
         tokens = torch.cat((output_tokens, sparse_prompt_embeddings), dim=1)
 
         # Expand per-image data in batch direction to be per-mask
-        src = torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
+        src = image_embeddings # torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
         src = src + dense_prompt_embeddings
-        pos_src = torch.repeat_interleave(image_pe, tokens.shape[0], dim=0)
+        pos_src = image_pe # torch.repeat_interleave(image_pe, tokens.shape[0], dim=0)
         b, c, h, w = src.shape
 
         # Run the transformer
+        
         hs, src = self.transformer(src, pos_src, tokens)
+        print(f"{hs.shape=}")
+        # breakpoint()
+        
         iou_token_out = hs[:, 0, :]
         mask_tokens_out = hs[:, 1 : (1 + self.num_mask_tokens), :]
 
+        # hs_split = torch.split(hs, 1, 1)
+        
+        # hs_split = torch.tensor_split(hs, tokens.shape[1], dim=1)
+        # iou_token_out = hs_split[0].squeeze(1)
+        
+        # mask_tokens_out = torch.cat(hs_split[1: 1 + self.num_mask_tokens], 1)
+
         # Upscale mask embeddings and predict masks using the mask tokens
-        src = src.transpose(1, 2).view(b, c, h, w)
+        src = src.transpose(1, 2).reshape(b, c, h, w)
 
         upscaled_embedding_sam = self.output_upscaling(src)
         upscaled_embedding_hq = self.embedding_maskfeature(upscaled_embedding_sam) + hq_features.repeat(b,1,1,1)
 
         hyper_in_list: List[torch.Tensor] = []
+        '''
         for i in range(self.num_mask_tokens):
             if i < self.num_mask_tokens - 1:
                 hyper_in_list.append(self.output_hypernetworks_mlps[i](mask_tokens_out[:, i, :]))
             else:
                 hyper_in_list.append(self.hf_mlp(mask_tokens_out[:, i, :]))
+        '''
+        # mask_splits = torch.split(mask_tokens_out, 1, 1)
+        # mask_splits = hs_split[1: 1 + self.num_mask_tokens]
+        '''
+        for i in range(self.num_mask_tokens - 1):
+            hyper_in_list.append(self.output_hypernetworks_mlps[i](hs_split[i+1].squeeze(1)))
+        # breakpoint()
+        hyper_in_last = self.hf_mlp(hs_split[self.num_mask_tokens].squeeze(1)).unsqueeze(1)
+        '''
+        for i in range(self.num_mask_tokens-1):
+            hyper_in_list.append(self.output_hypernetworks_mlps[i](mask_tokens_out[:, i, :]))
+        hyper_in_last = self.hf_mlp(mask_tokens_out[:, self.num_mask_tokens-1, :]).unsqueeze(1)
 
         hyper_in = torch.stack(hyper_in_list, dim=1)
         b, c, h, w = upscaled_embedding_sam.shape
 
-        masks_sam = (hyper_in[:,:self.num_mask_tokens-1] @ upscaled_embedding_sam.view(b, c, h * w)).view(b, -1, h, w)
-        masks_sam_hq = (hyper_in[:,self.num_mask_tokens-1:] @ upscaled_embedding_hq.view(b, c, h * w)).view(b, -1, h, w)
+        # masks_sam = (hyper_in[:,:self.num_mask_tokens-1] @ upscaled_embedding_sam.view(b, c, h * w)).view(b, -1, h, w)
+        # masks_sam_hq = (hyper_in[:,self.num_mask_tokens-1:] @ upscaled_embedding_hq.view(b, c, h * w)).view(b, -1, h, w)
+        masks_sam = torch.bmm(hyper_in, upscaled_embedding_sam.reshape((b, c, -1)))
+        masks_sam = masks_sam.reshape((b, -1, h, w))
+
+        masks_sam_hq = torch.bmm(hyper_in_last, upscaled_embedding_hq.reshape((b, c, -1)))
+        masks_sam_hq = masks_sam_hq.reshape((b, -1, h, w))
+
         masks = torch.cat([masks_sam,masks_sam_hq],dim=1)
         # Generate mask quality predictions
-        iou_pred = self.iou_prediction_head(iou_token_out)
+        iou_pred = self.iou_prediction_head(iou_token_out)# .squeeze(1)
 
         return masks, iou_pred

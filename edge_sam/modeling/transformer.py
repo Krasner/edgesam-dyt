@@ -234,7 +234,7 @@ class Attention(nn.Module):
         x = x.transpose(1, 2)
         return x.reshape(b, n_tokens, n_heads * c_per_head)  # B x N_tokens x C
 
-    def forward(self, q: Tensor, k: Tensor, v: Tensor, kd_targets=None, target_name=None):
+    def forward_orig(self, q: Tensor, k: Tensor, v: Tensor, kd_targets=None, target_name=None):
         # Input projections
         q = self.q_proj(q)
         k = self.k_proj(k)
@@ -248,7 +248,7 @@ class Attention(nn.Module):
         # Attention
         _, _, _, c_per_head = q.shape
         attn = q @ k.permute(0, 1, 3, 2)  # B x N_heads x N_tokens x N_tokens
-        attn = attn / math.sqrt(c_per_head)
+        attn = attn / torch.sqrt(torch.tensor(c_per_head, dtype=torch.float32))
         attn = torch.softmax(attn, dim=-1, dtype=torch.float32)
 
         if kd_targets is not None:
@@ -257,6 +257,55 @@ class Attention(nn.Module):
         # Get output
         out = attn @ v
         out = self._recombine_heads(out)
+        out = self.out_proj(out)
+
+        return out
+    
+    def _separate_heads2(self, x: Tensor, num_heads: int, swap: bool = False) -> Tensor:
+        b, n, c = x.shape
+        x = x.reshape(b, n, num_heads, c // num_heads)
+        # # return x.transpose(1, 2)  # B x N_heads x N_tokens x C_per_head
+        if swap:
+            return torch.permute(x, (0, 2, 3, 1)).reshape(-1, c//num_heads, n)
+        else:
+            return torch.permute(x, (0, 2, 1, 3)).reshape(-1, n, c//num_heads)
+        
+    def _recombine_heads2(self, x: Tensor, num_heads: int) -> Tensor:
+        b_n_heads, n_tokens, c_per_head = x.shape
+        x = x.reshape(-1, num_heads, n_tokens, c_per_head)
+        # # x = x.transpose(1, 2)
+        x = torch.permute(x, (0, 2, 1, 3))
+        return x.reshape(-1, n_tokens, num_heads * c_per_head)  # B x N_tokens x C
+        # return rearrange(x, '(b h) n c -> b n (h c)', h=num_heads, n=n_tokens, c=c_per_head)
+
+    def forward(self, q: Tensor, k: Tensor, v: Tensor, kd_targets=None, target_name=None) -> Tensor:
+        # Input projections
+        q = self.q_proj(q)
+        k = self.k_proj(k)
+        v = self.v_proj(v)
+
+        # Separate into heads
+        q = self._separate_heads2(q, self.num_heads)
+        k = self._separate_heads2(k, self.num_heads, swap=True)
+        v = self._separate_heads2(v, self.num_heads)
+
+        # Attention
+        # _, _, _, c_per_head = q.shape
+        c_per_head = q.shape[-1]
+        # attn = q @ k.permute(0, 1, 3, 2)  # B x N_heads x N_tokens x N_tokens
+        # attn = q @ k  # B x N_heads x N_tokens x N_tokens
+        attn = torch.bmm(q, k)
+        # attn = attn / math.sqrt(c_per_head)
+        attn = attn / torch.sqrt(torch.tensor(c_per_head, dtype=torch.float32))
+        attn = torch.softmax(attn, dim=-1, dtype=torch.float32)
+
+        if kd_targets is not None:
+            kd_targets[target_name] = attn
+
+        # Get output
+        # out = attn @ v
+        out = torch.bmm(attn, v)
+        out = self._recombine_heads2(out,self.num_heads)
         out = self.out_proj(out)
 
         return out

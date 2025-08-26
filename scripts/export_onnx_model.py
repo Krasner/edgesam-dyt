@@ -2,8 +2,13 @@ import torch
 import argparse
 from edge_sam import sam_model_registry
 from edge_sam.utils.coreml import SamCoreMLModel, SamCoreMLModelHQ
+from training.utils import replace_batchnorm
 import onnx, onnxsim
 
+from torch.onnx import verification
+
+torch.manual_seed(0)
+OPSET = 20
 
 parser = argparse.ArgumentParser(
     description="Export the EdgeSAM to ONNX models."
@@ -62,12 +67,21 @@ def export_encoder_to_onnx(sam, args):
                 m.approximate = "tanh"
 
     image_input = torch.randn(1, 3, 1024, 1024, dtype=torch.float)
+    # fuse batchnorms
+    
+    replace_batchnorm(sam.image_encoder)
+    sam.image_encoder.eval()
+    # breakpoint()
+    
     if args.hq:
         sam.forward = sam.forward_dummy_encoder_hq
+        # _forward = sam.forward_dummy_encoder_hq
     else:
         sam.forward = sam.forward_dummy_encoder
-
-    traced_model = torch.jit.trace(sam, image_input, strict=False)
+        # _forward = sam.forward_dummy_encoder
+    traced_model = torch.jit.trace(sam, image_input, strict=True)
+    traced_model.eval()
+    # traced_model = torch.jit.script(sam)
 
     # Define the input names and output names
     input_names = ["image"]
@@ -83,22 +97,55 @@ def export_encoder_to_onnx(sam, args):
     print(f"{output_names=}")
     # Export the encoder model to ONNX format
     onnx_encoder_filename = args.checkpoint.replace('.pth', '_encoder.onnx')
+    
     torch.onnx.export(
+        # sam.image_encoder,
         traced_model,
         image_input,
         onnx_encoder_filename,
         input_names=input_names,
         output_names=output_names,
-        opset_version=17,  # Use an appropriate ONNX opset version
+        opset_version=OPSET,  # Use an appropriate ONNX opset version
+        verbose=True,
+        verify=True,
+        do_constant_folding=True,
+        export_params=True,
+        profile=True,
+        # dynamo=True,
+    )
+    print(f"Exported ONNX encoder model to {onnx_encoder_filename}")
+    
+    '''
+    verification.verify(
+        # sam.image_encoder,
+        traced_model,
+        image_input,
+        opset_version=OPSET,
+        do_constant_folding=True,
+        input_names=input_names,
+        output_names=output_names,
+    )
+    '''
+    '''
+    verification.find_mismatch(
+        sam.image_encoder, 
+        # traced_model,
+        (torch.randn(1, 3, 1024, 1024, dtype=torch.float),),
+        opset_version=OPSET, 
+        do_constant_folding=True,
         verbose=True,
     )
-
-    print(f"Exported ONNX encoder model to {onnx_encoder_filename}")
-
+    breakpoint()
+    '''
+    
     return onnx_encoder_filename
 
 
 def export_decoder_to_onnx(sam, args):
+    sam.eval()
+    sam.prompt_encoder.eval()
+    sam.mask_decoder.eval()
+
     if args.hq:
         sam_decoder = SamCoreMLModelHQ(
             model=sam,
@@ -148,26 +195,44 @@ def export_decoder_to_onnx(sam, args):
         inputs.extend(interm_embeddings)
 
     output_names = ["scores", "masks"]
+    if args.hq:
+        output_names.append("masks_sam") #
+
+    # output_names.extend(["hq_features", "sparse_embs", "dense_embs"]) #  for validation
 
     # Export the decoder model to ONNX format
     onnx_decoder_filename = args.checkpoint.replace('.pth', '_decoder.onnx')
+    
+    # traced_model = torch.jit.trace(sam_decoder, tuple(inputs), strict=True)
+    # traced_model.eval()
+    
     torch.onnx.export(
         sam_decoder,
         tuple(inputs),
         onnx_decoder_filename,
         input_names=input_names,
         output_names=output_names,
-        opset_version=17,  # Use an appropriate ONNX opset version
+        opset_version=OPSET,  # Use an appropriate ONNX opset version
         dynamic_axes={
             "point_coords": {1: "num_points"},
             "point_labels": {1: "num_points"},
             # "boxes": {1: "num_boxes"},
         },
-        verbose=False
+        verbose=True,
+        do_constant_folding=True,
     )
-
+    
     print(f"Exported ONNX decoder model to {onnx_decoder_filename}")
-
+    
+    verification.find_mismatch(
+        sam_decoder,
+        tuple(inputs),
+        opset_version=OPSET, 
+        do_constant_folding=True,
+        verbose=True,
+    )
+    # breakpoint()
+    
     return onnx_decoder_filename
 
 def simplify(f):
@@ -192,7 +257,7 @@ if __name__ == "__main__":
 
     version = "edge_sam_dyt_hq" if args.hq else "edge_sam_dyt"
 
-    sam = sam_model_registry[version](checkpoint=args.checkpoint, upsample_mode="bilinear")
+    sam = sam_model_registry[version](checkpoint=args.checkpoint, upsample_mode="bicubic")
     sam.eval()
     # breakpoint()
     if args.decoder:

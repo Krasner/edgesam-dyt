@@ -7,6 +7,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 from typing import Type
 
@@ -136,8 +137,17 @@ class DynamicTanh(nn.Module):
         if self.channels_last:
             x = x * self.weight + self.bias
         else:
-            x = x * self.weight[:, None, None] + self.bias[:, None, None]
+            # x = x * self.weight[:, None, None] + self.bias[:, None, None]
+            x = x * self.weight.unsqueeze(-1).unsqueeze(-1) + self.bias.unsqueeze(-1).unsqueeze(-1)
         return x
 
     def extra_repr(self):
         return f"normalized_shape={self.normalized_shape}, alpha_init_value={self.alpha_init_value}, channels_last={self.channels_last}"
+
+class ApproxGeLU(nn.Module):
+    def __init__(self, *args):
+        super().__init__()
+        self._scale = np.sqrt(2.0/ np.pi) 
+
+    def forward(self, x):
+        return 0.5 * x * (1 + torch.tanh(self._scale * (x + 0.044715 * x**3)))

@@ -1,5 +1,5 @@
 import torch.nn as nn
-from .common import LayerNorm2d, UpSampleLayer, OpSequential, DynamicTanh
+from .common import LayerNorm2d, UpSampleLayer, OpSequential, DynamicTanh, ApproxGeLU
 
 __all__ = ['rep_vit_m1', 'rep_vit_m2', 'rep_vit_m3', 'rep_vit_m1_dyt', 'RepViT']
 
@@ -173,14 +173,14 @@ class Residual(torch.nn.Module):
             assert (m.groups == m.in_channels)
             identity = torch.ones(m.weight.shape[0], m.weight.shape[1], 1, 1)
             identity = torch.nn.functional.pad(identity, [1, 1, 1, 1])
-            m.weight += identity.to(m.weight.device)
+            m.weight = m.weight + identity.to(m.weight.device)
             return m
         elif isinstance(self.m, torch.nn.Conv2d):
             m = self.m
             assert (m.groups != m.in_channels)
             identity = torch.ones(m.weight.shape[0], m.weight.shape[1], 1, 1)
             identity = torch.nn.functional.pad(identity, [1, 1, 1, 1])
-            m.weight += identity.to(m.weight.device)
+            m.weight = m.weight + identity.to(m.weight.device)
             return m
         else:
             return self
@@ -224,7 +224,8 @@ class RepVGGDW(torch.nn.Module):
 
         bn = self.bn
         w = bn.weight / (bn.running_var + bn.eps)**0.5
-        w = conv.weight * w[:, None, None, None]
+        # w = conv.weight * w[:, None, None, None]
+        w = conv.weight * w.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
         b = bn.bias + (conv.bias - bn.running_mean) * bn.weight / \
             (bn.running_var + bn.eps)**0.5
         conv.weight.data.copy_(w)
@@ -262,6 +263,8 @@ class RepViTBlock(nn.Module):
         self.identity = stride == 1 and inp == oup
         assert (hidden_dim == 2 * inp)
 
+        _gelu = ApproxGeLU() if gelu_approx == "tanh" else torch.nn.GELU()
+
         if stride == 2:
             if skip_downsample:
                 stride = 1
@@ -273,7 +276,7 @@ class RepViTBlock(nn.Module):
             self.channel_mixer = Residual(nn.Sequential(
                 # pw
                 Conv2d_BN(oup, 2 * oup, 1, 1, 0),
-                nn.GELU(gelu_approx) if use_hs else nn.GELU(gelu_approx),
+                _gelu, # nn.GELU(gelu_approx) if use_hs else nn.GELU(gelu_approx),
                 # pw-linear
                 Conv2d_BN(2 * oup, oup, 1, 1, 0, bn_weight_init=0),
             ))
@@ -286,7 +289,7 @@ class RepViTBlock(nn.Module):
             self.channel_mixer = Residual(nn.Sequential(
                 # pw
                 Conv2d_BN(inp, hidden_dim, 1, 1, 0),
-                nn.GELU(gelu_approx) if use_hs else nn.GELU(gelu_approx),
+                _gelu, # nn.GELU(gelu_approx) if use_hs else nn.GELU(gelu_approx),
                 # pw-linear
                 Conv2d_BN(hidden_dim, oup, 1, 1, 0, bn_weight_init=0),
             ))
@@ -361,8 +364,12 @@ class RepViT(nn.Module):
 
         # building first layer
         input_channel = self.cfgs[0][2]
-        patch_embed = torch.nn.Sequential(Conv2d_BN(3, input_channel // 2, 3, 2, 1), torch.nn.GELU(gelu_approx),
-                                          Conv2d_BN(input_channel // 2, input_channel, 3, 2, 1))
+        _gelu = ApproxGeLU() if gelu_approx == "tanh" else torch.nn.GELU()
+        patch_embed = torch.nn.Sequential(
+            Conv2d_BN(3, input_channel // 2, 3, 2, 1), 
+            _gelu, # torch.nn.GELU(gelu_approx),
+            Conv2d_BN(input_channel // 2, input_channel, 3, 2, 1)
+        )
         layers = [patch_embed]
         # building inverted residual blocks
         block = RepViTBlock
@@ -394,7 +401,7 @@ class RepViT(nn.Module):
         else:
             neck_in_channels = output_channel
         
-        if dyt:
+        if self.dyt:
             self.neck = nn.Sequential(
                 nn.Conv2d(neck_in_channels, 256, kernel_size=1, bias=False),
                 DynamicTanh(256, False),
@@ -442,7 +449,7 @@ class RepViT(nn.Module):
             x = f(x)
             if idx in self.stage_idx:
                 output_dict[f'stage{counter}'] = x
-                counter += 1
+                counter = counter + 1
 
         if self.fuse:
             x = self.fuse_stage2(output_dict['stage2']) + self.fuse_stage3(output_dict['stage3'])

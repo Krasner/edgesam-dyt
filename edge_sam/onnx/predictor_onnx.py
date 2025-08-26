@@ -194,8 +194,13 @@ class SamPredictorONNXHQ(SamPredictorONNX):
             'interm_embeddings_1': features[2],
             'interm_embeddings_2': features[3],
         })
-        scores, low_res_masks = outputs[0], outputs[1]
+        scores, low_res_masks, low_res_masks_sam = outputs[0], outputs[1], outputs[2]
+        # for validation
+        # hq_features, sparse_embs, dense_embs = outputs[3], outputs[4], outputs[5]
         masks = self.postprocess_masks(low_res_masks)
         masks = masks > self.mask_threshold
 
-        return masks, scores, low_res_masks
+        masks_sam = self.postprocess_masks(low_res_masks_sam)
+        masks_sam = masks_sam > self.mask_threshold
+
+        return masks, scores, low_res_masks, masks_sam, low_res_masks_sam # , hq_features, sparse_embs, dense_embs
