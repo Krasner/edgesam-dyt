@@ -19,10 +19,10 @@ This codebase adapts the code in the EdgeSAM repo.
 __2025-08-25__
 We find that the ONNX results _do not match_ the pytorch results. We fix this problem by extensively checking intermediate tensor values and restructuring various layers in the encoder and decoder (more problematic) into onnx-friendly operations. We also fix `_embed_points` in coreml.py that did not apply a padding token when no boxes are present/valid.
 
-We update the ONNX encoder/decoder checkpoints for STEP 4 and 5 (HQ).
-See `notebooks/predictor_example_onnx_compare.ipynb` for a more detailed comparison - we feed the image_embeddings (and interm_embeddings) to the pytorch prompt encoder/mask decoder which will produce correct results, but if the ONNX decoder is incorrectly converted, it will not match the pytorch results.
-
+<ins>We updated the ONNX encoder/decoder checkpoints for STEP 4 and 5 (HQ).</ins> \
 Merging to main will require some work... (for now look at branch `dev/onnx`)
+
+See `notebooks/predictor_example_onnx_compare.ipynb` for a more detailed comparison - we feed the image_embeddings (and interm_embeddings) to the pytorch prompt encoder/mask decoder which will produce correct results, but if the ONNX decoder is incorrectly converted, it will not match the pytorch results.
 
 __2025-07-12__
 
