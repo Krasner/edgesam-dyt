@@ -260,7 +260,15 @@ class MaskDecoderHQ(MaskDecoder):
         if dyt:
             self.compress_vit_feat = nn.ModuleList([
                 nn.Sequential(
-                    nn.Conv2d(vit_dim[i], transformer_dim, 3, 1, 1) if i < 2 else nn.ConvTranspose2d(vit_dim[i], transformer_dim, kernel_size=2, stride=2),
+                    # DynamicTanh(vit_dim[i], False, alpha_init_value=0.01), # new (intermediate layer values are large!)
+                    # similar interface as repvit neck
+                    nn.Conv2d(vit_dim[i], 256, kernel_size=1, bias=False),
+                    DynamicTanh(256, False),
+                    nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
+                    DynamicTanh(256, False),
+
+                    nn.Conv2d(256, transformer_dim, 3, 1, 1) if i < 2 else nn.ConvTranspose2d(256, transformer_dim, kernel_size=2, stride=2),
+                    # nn.Conv2d(vit_dim[i], transformer_dim, 3, 1, 1) if i < 2 else nn.ConvTranspose2d(vit_dim[i], transformer_dim, kernel_size=2, stride=2),
                     DynamicTanh(transformer_dim, False),
                     activation(gelu_approx), 
                     nn.Conv2d(transformer_dim, transformer_dim // 8, 3, 1, 1),

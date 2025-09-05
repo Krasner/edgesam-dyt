@@ -37,7 +37,7 @@ from utils import (
 )
 from my_meter import AverageMeter
 
-from hq_utils.dataloader import get_im_gt_name_dict, create_dataloaders, RandomHFlip, Resize, LargeScaleJitter
+from hq_utils.dataloader import get_im_gt_name_dict, create_dataloaders, RandomHFlip, RandomVFlip, RandomRot, Resize, LargeScaleJitter
 from hq_utils.loss_mask import loss_masks
 import hq_utils.misc as misc
 
@@ -146,6 +146,8 @@ def main(args, config, train_datasets, valid_datasets):
                                                         my_transforms = [
                                                                     # Resize([1024,1024]),
                                                                     RandomHFlip(),
+                                                                    RandomVFlip(),
+                                                                    RandomRot(),
                                                                     LargeScaleJitter(
                                                                         # aug_scale_min=0.5,
                                                                         # aug_scale_max=1.25
@@ -212,9 +214,11 @@ def main(args, config, train_datasets, valid_datasets):
         param.requires_grad = False
     # breakpoint()
     # MANUALLY SET HF_TOKEN from teacher model
-    model_without_ddp.mask_decoder.hf_token.weight = teacher_model.mask_decoder.hf_token.weight
+    # model_without_ddp.mask_decoder.hf_token.weight = teacher_model.mask_decoder.hf_token.weight
+    torch.nn.init.xavier_uniform(model_without_ddp.mask_decoder.hf_token.weight)
     
     # MANUALLY copy over other matching weights and biases
+    
     for i, layer in enumerate(model_without_ddp.mask_decoder.embedding_encoder):
         if hasattr(layer,'weight'):
             layer.weight = teacher_model.mask_decoder.embedding_encoder[i].weight
@@ -237,8 +241,8 @@ def main(args, config, train_datasets, valid_datasets):
     # hf_token, hf_mlp, compress_vit_feat, embedding_encoder, embedding_maskfeature
     for name, param in model_without_ddp.mask_decoder.named_parameters():
         if (
-            # 'hf_token' in name
-            'hf_mlp' in name
+            'hf_token' in name
+            or 'hf_mlp' in name
             or 'compress_vit_feat' in name
             or 'embedding_encoder' in name
             or 'embedding_maskfeature' in name
