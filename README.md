@@ -34,7 +34,7 @@ STEP 3 (Base Model): [PyTorch](https://drive.google.com/file/d/1YFBE939hOeraelSX
 
 STEP 4 (Final Base Model): [PyTorch](https://drive.google.com/file/d/10cTazWMI2tq0LMXkFog-TdHqn1zFNS2s/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/1cXbkGiFiyjHoH33oAgLAbyXgBGPeOnVY/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/16gnNHEptpid8eNuVVRA9yuP6gOvo5ocn/view?usp=drive_link)
 
-STEP 5 (OPTIONAL HQ Model): [PyTorch](https://drive.google.com/file/d/1pYztXLdoBMpUd41No3wdBXSUPtidpKke/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/1fmX1H480wX1MIIAwPyAM5gW4GtMMW9nu/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1gJbuOPMjO0YL8BZSw8QbpGEGZJ2sx4FN/view?usp=drive_link)
+STEP 5 (OPTIONAL HQ Model): [PyTorch](https://drive.google.com/file/d/1S2JYHEgfJlgDWIZvZjAl8HYsjgJ5QyDK/view?usp=drive_link) | [ONNX Encoder](https://drive.google.com/file/d/1yUZ2Lab4bSLsv52aiF0PVHS552xCf5Ne/view?usp=drive_link) | [ONNX Decoder](https://drive.google.com/file/d/1jNjpaDQiNm4D3a0ajyab3O6vjKmHLNxj/view?usp=drive_link)
 
 ## Reproducibility
 We provide the full script in `scripts/download_data_and_run_distillation.sh`
