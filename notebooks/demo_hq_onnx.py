@@ -7,6 +7,7 @@ import os
 import sys
 sys.path.append("..")
 from edge_sam import sam_model_registry, SamPredictor
+from edge_sam.onnx.predictor_onnx import SamPredictorONNX, SamPredictorONNXHQ
 
 def show_mask(mask, ax, random_color=False):
     if random_color:
@@ -64,16 +65,20 @@ if __name__ == "__main__":
     # sam_checkpoint = "./pretrained_checkpoint/sam_hq_vit_l.pth"
     # sam_checkpoint = "/home/ubuntu/sam-hq/train/work_dirs/hq_sam_h/sam_hq_epoch_11.pth"
     # model_type = "vit_h"
-    sam_checkpoint = "../output/rep_vit_m1_dyt_hq_fuse_enc_dec/default/ckpt_epoch_19.pth"
-    model_type = "edge_sam_dyt_hq"
+    # sam_checkpoint = "../output/rep_vit_m1_dyt_hq_fuse_enc_dec/default/ckpt_epoch_19.pth"
+    # model_type = "edge_sam_dyt_hq"
     # sam_checkpoint = "../output/rep_vit_m1_dyt_fuse_enc_dec_4m_ft_bp_iter2b_sa_distill/default/ckpt_epoch_39.pth"
     # model_type = "edge_sam_dyt"
 
-    device = "cuda"
-    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-    sam.to(device=device)
-    predictor = SamPredictor(sam)
-
+    # device = "cuda"
+    # sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+    # sam.to(device=device)
+    # predictor = SamPredictor(sam)
+    predictor = SamPredictorONNXHQ(
+        encoder_path="../output/rep_vit_m1_dyt_hq_fuse_enc_dec/default/ckpt_epoch_19_encoder.onnx",
+        decoder_path="../output/rep_vit_m1_dyt_hq_fuse_enc_dec/default/ckpt_epoch_19_decoder.onnx",
+    )
+    
     for i in range(8):
         print("image:   ",i)
         # hq_token_only: False means use hq output to correct SAM output. 
@@ -122,28 +127,46 @@ if __name__ == "__main__":
             input_point, input_label = None, None
 
         batch_box = False if input_box is None else len(input_box)>1 
-        result_path = './hq_result/'
+        result_path = './hq_result_onnx/'
         os.makedirs(result_path, exist_ok=True)
 
+        if input_box is None:
+            boxes_valid=np.ones((1,1),bool)
+            input_box = np.zeros((1,1,4))
+        else:
+            boxes_valid = np.ones((1, input_box.shape[0]), bool)
+            input_box = input_box[None]
+
+        if input_point is None:
+            input_point = np.zeros((1,1,2))
+            input_label=np.zeros((1,1))
+            point_valid=np.zeros((1,1),bool)
+        else:
+            input_point = input_point[None] 
+            input_label = input_label[None]
+            point_valid=np.ones((1,1),bool)
+
         if not batch_box: 
-            masks, scores, logits, _, _ = predictor.predict(
+            masks, scores, logits, *outs = predictor.predict(
                 point_coords=input_point,
                 point_labels=input_label,
-                box = input_box,
+                point_valid=point_valid,
+                boxes = input_box,
+                boxes_valid=boxes_valid,
                 # multimask_output=False,
                 # hq_token_only=hq_token_only, 
-                num_multimask_outputs=1,
+                # num_multimask_outputs=1,
             )
-            show_res(masks,scores,input_point, input_label, input_box, result_path + 'example'+str(i), image)
+            show_res(masks[0],scores[0],input_point[0], input_label[0], input_box[0], result_path + 'example'+str(i), image)
         
         else:
-            masks, scores, logits, _, _ = predictor.predict_torch(
+            masks, scores, logits, *outs = predictor.predict_torch(
                 point_coords=input_point,
                 point_labels=input_label,
                 boxes=transformed_box,
                 # multimask_output=False,
                 # hq_token_only=hq_token_only,
-                num_multimask_outputs=1,
+                # num_multimask_outputs=1,
             )
             masks = masks.squeeze(1).cpu().numpy()
             scores = scores.squeeze(1).cpu().numpy()

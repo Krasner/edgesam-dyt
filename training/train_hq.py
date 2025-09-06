@@ -215,9 +215,10 @@ def main(args, config, train_datasets, valid_datasets):
     # breakpoint()
     # MANUALLY SET HF_TOKEN from teacher model
     # model_without_ddp.mask_decoder.hf_token.weight = teacher_model.mask_decoder.hf_token.weight
-    # model_without_ddp.mask_decoder.hf_token.weight = 1e-1 * torch.randn((1,256))
     torch.nn.init.xavier_uniform(model_without_ddp.mask_decoder.hf_token.weight)
+    
     # MANUALLY copy over other matching weights and biases
+    
     for i, layer in enumerate(model_without_ddp.mask_decoder.embedding_encoder):
         if hasattr(layer,'weight'):
             layer.weight = teacher_model.mask_decoder.embedding_encoder[i].weight
